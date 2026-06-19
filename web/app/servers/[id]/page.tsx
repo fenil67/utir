@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getServer } from "@/lib/api";
 import TrustBadge from "@/components/TrustBadge";
+import InstallCopyButton from "@/components/InstallCopyButton";
 
 interface Props {
   params: Promise<{ id: string }>;
@@ -204,7 +205,10 @@ export default async function ServerDetailPage({ params }: Props) {
 
       {/* Install snippet */}
       <div className="rounded-xl bg-white/[0.03] border border-white/10 p-5">
-        <h2 className="text-sm font-semibold text-white mb-3">Claude Desktop Config</h2>
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-sm font-semibold text-white">Claude Desktop Config</h2>
+          <InstallCopyButton snippet={installSnippet} serverId={server.id} />
+        </div>
         <p className="text-xs text-gray-500 mb-3">
           Add this to your <code className="font-mono text-gray-400">claude_desktop_config.json</code>:
         </p>

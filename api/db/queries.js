@@ -367,6 +367,122 @@ async function listPipelineRuns(pool) {
   return result.rows;
 }
 
+/**
+ * Claim a server for a Clerk user.
+ * Returns null if the server doesn't exist or is already claimed by someone else.
+ *
+ * @param {import('pg').Pool} pool
+ * @param {string} serverId  UUID
+ * @param {string} clerkUserId
+ */
+async function claimServer(pool, serverId, clerkUserId) {
+  const result = await pool.query(
+    `UPDATE servers
+     SET claimed_by = $1, claimed_at = NOW()
+     WHERE id = $2
+       AND confirmed = TRUE
+       AND (claimed_by IS NULL OR claimed_by = $1)
+     RETURNING id, name, github_url, claimed_by, claimed_at`,
+    [clerkUserId, serverId]
+  );
+  return result.rows[0] || null;
+}
+
+/**
+ * All servers claimed by a user, with latest scan + 30-day score history + install counts.
+ *
+ * @param {import('pg').Pool} pool
+ * @param {string} clerkUserId
+ */
+async function getDashboardData(pool, clerkUserId) {
+  const serversSql = `
+    SELECT
+      s.id, s.name, s.github_url, s.description, s.language,
+      s.stars, s.owner, s.last_pushed, s.claimed_at,
+      sc.trust_score, sc.auth_tier, sc.static_score, sc.deps_score,
+      sc.behavior_score, sc.maintenance_score, sc.findings, sc.scanned_at AS last_scanned
+    FROM servers s
+    LEFT JOIN LATERAL (
+      SELECT * FROM scans
+      WHERE server_id = s.id
+      ORDER BY scanned_at DESC
+      LIMIT 1
+    ) sc ON TRUE
+    WHERE s.claimed_by = $1 AND s.confirmed = TRUE
+    ORDER BY s.claimed_at DESC
+  `;
+
+  const histSql = `
+    SELECT
+      s.id AS server_id,
+      sc.trust_score,
+      sc.scanned_at
+    FROM servers s
+    JOIN scans sc ON sc.server_id = s.id
+    WHERE s.claimed_by = $1
+      AND sc.scanned_at >= NOW() - INTERVAL '90 days'
+    ORDER BY sc.scanned_at ASC
+  `;
+
+  const installSql = `
+    SELECT
+      ie.server_id,
+      DATE(ie.installed_at) AS day,
+      COUNT(*) AS count
+    FROM install_events ie
+    JOIN servers s ON s.id = ie.server_id
+    WHERE s.claimed_by = $1
+      AND ie.installed_at >= NOW() - INTERVAL '30 days'
+    GROUP BY ie.server_id, day
+    ORDER BY day ASC
+  `;
+
+  const [serversResult, histResult, installResult] = await Promise.all([
+    pool.query(serversSql, [clerkUserId]),
+    pool.query(histSql, [clerkUserId]),
+    pool.query(installSql, [clerkUserId]),
+  ]);
+
+  // Group history and installs by server_id
+  const historyByServer = {};
+  for (const row of histResult.rows) {
+    if (!historyByServer[row.server_id]) historyByServer[row.server_id] = [];
+    historyByServer[row.server_id].push({
+      trust_score: row.trust_score,
+      scanned_at:  row.scanned_at,
+    });
+  }
+
+  const installsByServer = {};
+  for (const row of installResult.rows) {
+    if (!installsByServer[row.server_id]) installsByServer[row.server_id] = [];
+    installsByServer[row.server_id].push({ day: row.day, count: parseInt(row.count, 10) });
+  }
+
+  const servers = serversResult.rows.map((s) => ({
+    ...s,
+    score_history:  historyByServer[s.id]    || [],
+    install_events: installsByServer[s.id]   || [],
+    total_installs: (installsByServer[s.id]  || []).reduce((sum, r) => sum + r.count, 0),
+  }));
+
+  return { servers };
+}
+
+/**
+ * Record an install event (copy of config snippet).
+ *
+ * @param {import('pg').Pool} pool
+ * @param {string} serverId UUID
+ * @param {string|null} ipHash  SHA-256 of client IP (already hashed by caller)
+ */
+async function recordInstallEvent(pool, serverId, ipHash) {
+  await pool.query(
+    `INSERT INTO install_events (server_id, ip_hash) VALUES ($1, $2)`,
+    [serverId, ipHash || null]
+  );
+}
+
 module.exports = {
   listServers,
   getServer,
@@ -377,4 +493,7 @@ module.exports = {
   insertServer,
   insertPipelineRun,
   listPipelineRuns,
+  claimServer,
+  getDashboardData,
+  recordInstallEvent,
 };

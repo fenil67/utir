@@ -141,6 +141,58 @@ app.post('/api/submit', asyncHandler(async (req, res) => {
   });
 }));
 
+// ── publisher / dashboard routes ─────────────────────────────────────────────
+
+const crypto = require('crypto');
+
+// POST /api/claim  { server_id, clerk_user_id }
+app.post('/api/claim', asyncHandler(async (req, res) => {
+  const { server_id, clerk_user_id } = req.body || {};
+
+  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (!server_id || !UUID_RE.test(server_id)) {
+    return res.status(400).json({ error: 'Valid "server_id" UUID is required.' });
+  }
+  if (!clerk_user_id || typeof clerk_user_id !== 'string') {
+    return res.status(400).json({ error: '"clerk_user_id" is required.' });
+  }
+
+  const server = await queries.claimServer(pool, server_id, clerk_user_id);
+  if (!server) {
+    return res.status(409).json({ error: 'Server not found, not confirmed, or already claimed by another user.' });
+  }
+
+  res.json({ data: server });
+}));
+
+// GET /api/dashboard/:clerk_user_id
+app.get('/api/dashboard/:clerk_user_id', asyncHandler(async (req, res) => {
+  const { clerk_user_id } = req.params;
+  if (!clerk_user_id) {
+    return res.status(400).json({ error: 'clerk_user_id is required.' });
+  }
+
+  const data = await queries.getDashboardData(pool, clerk_user_id);
+  res.json({ data });
+}));
+
+// POST /api/dashboard/install-event  { server_id }
+app.post('/api/dashboard/install-event', asyncHandler(async (req, res) => {
+  const { server_id } = req.body || {};
+
+  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (!server_id || !UUID_RE.test(server_id)) {
+    return res.status(400).json({ error: 'Valid "server_id" UUID is required.' });
+  }
+
+  // Hash the IP so we store no PII
+  const raw = req.ip || req.headers['x-forwarded-for'] || '';
+  const ipHash = crypto.createHash('sha256').update(raw).digest('hex');
+
+  await queries.recordInstallEvent(pool, server_id, ipHash);
+  res.status(201).json({ ok: true });
+}));
+
 // ── admin routes ──────────────────────────────────────────────────────────────
 
 function requireAdminKey(req, res, next) {
