@@ -155,14 +155,52 @@ async function getServer(pool, id) {
 }
 
 /**
- * Full-text search over name, description, and tool names.
+ * Semantic vector search using pgvector cosine similarity.
+ * Falls back to full-text search when no embedding is provided.
  *
  * @param {import('pg').Pool} pool
- * @param {string} q  raw search string
+ * @param {string} q           raw search string
+ * @param {number[]|null} queryEmbedding  1536-dim float array or null
  */
-async function searchServers(pool, q) {
+async function searchServers(pool, q, queryEmbedding = null) {
   if (!q || !q.trim()) return [];
 
+  // ── Vector search ─────────────────────────────────────────────────────────
+  if (queryEmbedding && Array.isArray(queryEmbedding)) {
+    const vecStr = '[' + queryEmbedding.join(',') + ']';
+
+    const sql = `
+      SELECT
+        s.id,
+        s.name,
+        s.github_url,
+        s.description,
+        s.language,
+        s.stars,
+        s.owner,
+        sc.trust_score,
+        sc.auth_tier,
+        sc.scanned_at AS last_scanned,
+        1 - (s.embedding <=> $1::vector) AS similarity
+      FROM servers s
+      LEFT JOIN LATERAL (
+        SELECT trust_score, auth_tier, scanned_at
+        FROM scans
+        WHERE server_id = s.id
+        ORDER BY scanned_at DESC
+        LIMIT 1
+      ) sc ON TRUE
+      WHERE s.confirmed = TRUE
+        AND s.embedding IS NOT NULL
+      ORDER BY s.embedding <=> $1::vector
+      LIMIT 10
+    `;
+
+    const result = await pool.query(sql, [vecStr]);
+    return result.rows;
+  }
+
+  // ── Full-text fallback ────────────────────────────────────────────────────
   const sql = `
     WITH latest AS (
       SELECT DISTINCT ON (server_id)
@@ -186,16 +224,9 @@ async function searchServers(pool, q) {
       latest.trust_score,
       latest.auth_tier,
       latest.scanned_at AS last_scanned,
-      ts_rank(
-        to_tsvector('english',
-          coalesce(s.name, '') || ' ' ||
-          coalesce(s.description, '') || ' ' ||
-          coalesce(tn.names, '')
-        ),
-        plainto_tsquery('english', $1)
-      ) AS rank
+      NULL::float AS similarity
     FROM servers s
-    LEFT JOIN latest   ON latest.server_id = s.id
+    LEFT JOIN latest     ON latest.server_id = s.id
     LEFT JOIN tool_names tn ON tn.server_id = s.id
     WHERE s.confirmed = TRUE
       AND to_tsvector('english',
@@ -203,7 +234,15 @@ async function searchServers(pool, q) {
             coalesce(s.description, '') || ' ' ||
             coalesce(tn.names, '')
           ) @@ plainto_tsquery('english', $1)
-    ORDER BY rank DESC
+    ORDER BY
+      ts_rank(
+        to_tsvector('english',
+          coalesce(s.name, '') || ' ' ||
+          coalesce(s.description, '') || ' ' ||
+          coalesce(tn.names, '')
+        ),
+        plainto_tsquery('english', $1)
+      ) DESC
     LIMIT 10
   `;
 

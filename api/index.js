@@ -6,7 +6,10 @@ const express    = require('express');
 const cors       = require('cors');
 const rateLimit  = require('express-rate-limit');
 const { Pool }   = require('pg');
+const { OpenAI } = require('openai');
 const queries    = require('./db/queries');
+
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 // ── database pool ─────────────────────────────────────────────────────────────
 
@@ -98,8 +101,26 @@ app.get('/api/search', asyncHandler(async (req, res) => {
     return res.status(400).json({ error: 'Query too long (max 200 characters).' });
   }
 
-  const results = await queries.searchServers(pool, q);
-  res.json({ data: results, query: q });
+  // Try to get a query embedding for semantic search; fall back to text search on failure
+  let queryEmbedding = null;
+  if (process.env.OPENAI_API_KEY) {
+    try {
+      const response = await openai.embeddings.create({
+        model: 'text-embedding-3-small',
+        input: q,
+      });
+      queryEmbedding = response.data[0].embedding;
+    } catch (err) {
+      console.warn('OpenAI embedding failed, falling back to text search:', err.message);
+    }
+  }
+
+  const results = await queries.searchServers(pool, q, queryEmbedding);
+  res.json({
+    data:    results,
+    query:   q,
+    mode:    queryEmbedding ? 'semantic' : 'text',
+  });
 }));
 
 // GET /api/stats

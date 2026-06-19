@@ -7,7 +7,8 @@
       "Bash(node -e \"const clerk = require\\('@clerk/nextjs'\\); console.log\\(Object.keys\\(clerk\\).filter\\(k => k.includes\\('Provider'\\) || k.includes\\('middleware'\\) || k.includes\\('Middleware'\\) || k.includes\\('Sign'\\) || k.includes\\('User'\\)\\).slice\\(0,20\\)\\)\")",
       "Bash(node:*)",
       "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\('version:', d['version']\\); print\\('exports:', list\\(d.get\\('exports',{}\\).keys\\(\\)\\)[:20]\\)\")",
-      "Bash(npx tsc:*)"
+      "Bash(npx tsc:*)",
+      "Bash(npm install:*)"
     ]
   }
 }

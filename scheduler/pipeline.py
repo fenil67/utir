@@ -169,9 +169,16 @@ def run_pipeline() -> dict:
         log.error("Cannot import scanner: %s", e)
         scan_main = lambda: {"scanned": 0, "skipped": 0, "errors": 1}  # noqa: E731
 
-    crawl_result    = run_step(conn, "crawl",    crawl_main)
+    try:
+        from scanner.generate_embeddings import main as embed_main
+    except ImportError as e:
+        log.error("Cannot import embeddings generator: %s", e)
+        embed_main = lambda: {"embedded": 0, "skipped": 0, "errors": 1}  # noqa: E731
+
+    crawl_result  = run_step(conn, "crawl",    crawl_main)
     classify_result = run_step(conn, "classify", classify_main)
-    scan_result     = run_step(conn, "scan",     scan_main)
+    scan_result   = run_step(conn, "scan",     scan_main)
+    embed_result  = run_step(conn, "embed",    embed_main)
 
     conn.close()
 
@@ -184,26 +191,30 @@ def run_pipeline() -> dict:
         "crawl":         crawl_result,
         "classify":      classify_result,
         "scan":          scan_result,
+        "embed":         embed_result,
         "totals": {
             "new_servers": crawl_result.get("new", 0),
             "classified":  classify_result.get("classified", 0),
             "confirmed":   classify_result.get("confirmed", 0),
             "scanned":     scan_result.get("scanned", 0),
+            "embedded":    embed_result.get("embedded", 0),
             "errors": (
                 crawl_result.get("errors", 0)
                 + classify_result.get("errors", 0)
                 + scan_result.get("errors", 0)
+                + embed_result.get("errors", 0)
             ),
         },
     }
 
     log.info(
-        "Pipeline complete in %ds — new:%d classified:%d confirmed:%d scanned:%d errors:%d",
+        "Pipeline complete in %ds — new:%d classified:%d confirmed:%d scanned:%d embedded:%d errors:%d",
         duration_secs,
         summary["totals"]["new_servers"],
         summary["totals"]["classified"],
         summary["totals"]["confirmed"],
         summary["totals"]["scanned"],
+        summary["totals"]["embedded"],
         summary["totals"]["errors"],
     )
 
