@@ -368,22 +368,22 @@ async function listPipelineRuns(pool) {
 }
 
 /**
- * Claim a server for a Clerk user.
- * Returns null if the server doesn't exist or is already claimed by someone else.
+ * Claim a server for a Clerk user, identified by github_url.
+ * Works whether or not the server is confirmed yet.
+ * Returns null if the server is already claimed by a different user.
  *
  * @param {import('pg').Pool} pool
- * @param {string} serverId  UUID
+ * @param {string} githubUrl
  * @param {string} clerkUserId
  */
-async function claimServer(pool, serverId, clerkUserId) {
+async function claimServer(pool, githubUrl, clerkUserId) {
   const result = await pool.query(
     `UPDATE servers
      SET claimed_by = $1, claimed_at = NOW()
-     WHERE id = $2
-       AND confirmed = TRUE
+     WHERE github_url = $2
        AND (claimed_by IS NULL OR claimed_by = $1)
-     RETURNING id, name, github_url, claimed_by, claimed_at`,
-    [clerkUserId, serverId]
+     RETURNING id, name, github_url, confirmed, claimed_by, claimed_at`,
+    [clerkUserId, githubUrl]
   );
   return result.rows[0] || null;
 }
@@ -398,7 +398,7 @@ async function getDashboardData(pool, clerkUserId) {
   const serversSql = `
     SELECT
       s.id, s.name, s.github_url, s.description, s.language,
-      s.stars, s.owner, s.last_pushed, s.claimed_at,
+      s.stars, s.owner, s.last_pushed, s.claimed_at, s.confirmed,
       sc.trust_score, sc.auth_tier, sc.static_score, sc.deps_score,
       sc.behavior_score, sc.maintenance_score, sc.findings, sc.scanned_at AS last_scanned
     FROM servers s
@@ -408,7 +408,7 @@ async function getDashboardData(pool, clerkUserId) {
       ORDER BY scanned_at DESC
       LIMIT 1
     ) sc ON TRUE
-    WHERE s.claimed_by = $1 AND s.confirmed = TRUE
+    WHERE s.claimed_by = $1
     ORDER BY s.claimed_at DESC
   `;
 
@@ -427,12 +427,12 @@ async function getDashboardData(pool, clerkUserId) {
   const installSql = `
     SELECT
       ie.server_id,
-      DATE(ie.installed_at) AS day,
+      DATE(ie.event_at) AS day,
       COUNT(*) AS count
     FROM install_events ie
     JOIN servers s ON s.id = ie.server_id
     WHERE s.claimed_by = $1
-      AND ie.installed_at >= NOW() - INTERVAL '30 days'
+      AND ie.event_at >= NOW() - INTERVAL '30 days'
     GROUP BY ie.server_id, day
     ORDER BY day ASC
   `;

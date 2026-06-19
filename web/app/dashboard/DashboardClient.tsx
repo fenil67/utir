@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { useUser } from "@clerk/nextjs";
 import {
   LineChart,
   Line,
@@ -116,8 +117,44 @@ function InstallChart({ events }: { events: InstallPoint[] }) {
   );
 }
 
+function PendingServerCard({ server }: { server: DashboardServer }) {
+  const repoName = server.name?.split("/").pop() ?? server.github_url.split("/").pop() ?? "Server";
+
+  return (
+    <div className="rounded-xl bg-white/[0.03] border border-white/10 overflow-hidden">
+      <div className="px-6 py-5 flex items-start justify-between gap-4">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2 flex-wrap mb-1">
+            <h2 className="text-base font-semibold text-white truncate">{repoName}</h2>
+            <span className="inline-flex items-center gap-1.5 text-xs font-medium px-2 py-0.5 rounded-full bg-yellow-500/15 text-yellow-400">
+              <span className="w-1.5 h-1.5 rounded-full bg-yellow-400 animate-pulse" />
+              Scanning in progress
+            </span>
+          </div>
+          <p className="text-xs text-gray-600 font-mono mt-1 truncate">{server.github_url}</p>
+          <p className="text-sm text-gray-500 mt-3">
+            Your server is being classified and scanned. Check back in a few hours.
+          </p>
+        </div>
+      </div>
+      <div className="px-5 py-3 border-t border-white/[0.06] flex items-center justify-between">
+        <p className="text-xs text-gray-700">
+          Submitted {new Date(server.claimed_at).toLocaleDateString()}
+        </p>
+        <a
+          href={server.github_url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-xs text-gray-500 hover:text-white transition-colors"
+        >
+          GitHub →
+        </a>
+      </div>
+    </div>
+  );
+}
+
 function ServerCard({ server, userId }: { server: DashboardServer; userId: string }) {
-  const [claiming, setClaiming] = useState(false);
   const repoName = server.name?.split("/").pop() ?? server.name;
   const tierInfo = server.auth_tier ? AUTH_TIER_INFO[server.auth_tier] : null;
   const highFindings = (server.findings ?? []).filter((f) => String(f.severity).toUpperCase() === "HIGH");
@@ -229,19 +266,34 @@ function ServerCard({ server, userId }: { server: DashboardServer; userId: strin
 // ── Claim panel ───────────────────────────────────────────────────────────────
 
 function ClaimPanel({ userId }: { userId: string }) {
-  const [serverId, setServerId] = useState("");
+  const { user } = useUser();
+  const [githubUrl, setGithubUrl] = useState("");
   const [status, setStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
   const [message, setMessage] = useState("");
 
+  const githubAccount = user?.externalAccounts?.find((a: { provider: string; username?: string }) => a.provider === "github");
+  const githubUsername = githubAccount?.username;
+
   async function handleClaim(e: React.FormEvent) {
     e.preventDefault();
-    if (!serverId.trim()) return;
+    if (!githubUrl.trim()) return;
+
+    if (!githubUsername) {
+      setStatus("error");
+      setMessage("Connect your GitHub account first to verify ownership. Go to your profile settings to connect GitHub.");
+      return;
+    }
+
     setStatus("loading");
     try {
       const res = await fetch(`${API_BASE}/api/claim`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ server_id: serverId.trim(), clerk_user_id: userId }),
+        body: JSON.stringify({
+          github_url:      githubUrl.trim(),
+          clerk_user_id:   userId,
+          github_username: githubUsername,
+        }),
       });
       const data = await res.json();
       if (res.ok) {
@@ -260,33 +312,52 @@ function ClaimPanel({ userId }: { userId: string }) {
   return (
     <div className="rounded-xl bg-white/[0.03] border border-white/10 p-5">
       <h3 className="text-sm font-semibold text-white mb-1">Claim a server</h3>
-      <p className="text-xs text-gray-500 mb-4">
-        Enter the server ID from its{" "}
-        <Link href="/servers" className="text-emerald-400 hover:underline">registry page</Link>.
-      </p>
-      {status === "success" ? (
-        <p className="text-sm text-emerald-400">{message}</p>
+
+      {!githubUsername ? (
+        <div className="mt-3 flex items-start gap-2.5 p-3 rounded-lg bg-yellow-500/10 border border-yellow-500/20">
+          <svg className="w-4 h-4 text-yellow-400 mt-0.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+          </svg>
+          <p className="text-xs text-yellow-300">
+            Connect your GitHub account in{" "}
+            <Link href="/user-profile" className="underline underline-offset-2 hover:text-yellow-200">
+              profile settings
+            </Link>{" "}
+            to claim servers.
+          </p>
+        </div>
       ) : (
-        <form onSubmit={handleClaim} className="flex gap-2">
-          <input
-            type="text"
-            value={serverId}
-            onChange={(e) => setServerId(e.target.value)}
-            placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
-            className="flex-1 text-xs px-3 py-2 bg-white/[0.05] border border-white/15 rounded-lg text-white placeholder-gray-600 focus:outline-none focus:border-white/30"
-            disabled={status === "loading"}
-          />
-          <button
-            type="submit"
-            disabled={status === "loading" || !serverId.trim()}
-            className="px-3 py-2 text-xs font-semibold rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white transition-colors"
-          >
-            {status === "loading" ? "…" : "Claim"}
-          </button>
-        </form>
-      )}
-      {status === "error" && (
-        <p className="mt-2 text-xs text-red-400">{message}</p>
+        <>
+          <p className="text-xs text-gray-500 mb-4 mt-1">
+            Enter your server&apos;s GitHub URL. We&apos;ll verify you own it by checking your connected GitHub account
+            {" "}(<span className="text-gray-400">@{githubUsername}</span>).
+          </p>
+
+          {status === "success" ? (
+            <p className="text-sm text-emerald-400">{message}</p>
+          ) : (
+            <form onSubmit={handleClaim} className="flex gap-2">
+              <input
+                type="url"
+                value={githubUrl}
+                onChange={(e) => setGithubUrl(e.target.value)}
+                placeholder="https://github.com/yourusername/your-mcp-server"
+                className="flex-1 text-xs px-3 py-2 bg-white/[0.05] border border-white/15 rounded-lg text-white placeholder-gray-600 focus:outline-none focus:border-white/30"
+                disabled={status === "loading"}
+              />
+              <button
+                type="submit"
+                disabled={status === "loading" || !githubUrl.trim()}
+                className="px-3 py-2 text-xs font-semibold rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white transition-colors"
+              >
+                {status === "loading" ? "…" : "Claim"}
+              </button>
+            </form>
+          )}
+          {status === "error" && (
+            <p className="mt-2 text-xs text-red-400">{message}</p>
+          )}
+        </>
       )}
     </div>
   );
@@ -315,9 +386,11 @@ export default function DashboardClient({
         </Link>
       </div>
 
-      {servers.map((s) => (
-        <ServerCard key={s.id} server={s} userId={userId} />
-      ))}
+      {servers.map((s) =>
+        s.confirmed
+          ? <ServerCard key={s.id} server={s} userId={userId} />
+          : <PendingServerCard key={s.id} server={s} />
+      )}
 
       <ClaimPanel userId={userId} />
     </div>

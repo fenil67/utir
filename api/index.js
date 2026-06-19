@@ -145,21 +145,47 @@ app.post('/api/submit', asyncHandler(async (req, res) => {
 
 const crypto = require('crypto');
 
-// POST /api/claim  { server_id, clerk_user_id }
+// POST /api/claim  { github_url, clerk_user_id, clerk_email?, github_username }
 app.post('/api/claim', asyncHandler(async (req, res) => {
-  const { server_id, clerk_user_id } = req.body || {};
+  const { github_url, clerk_user_id, github_username } = req.body || {};
 
-  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-  if (!server_id || !UUID_RE.test(server_id)) {
-    return res.status(400).json({ error: 'Valid "server_id" UUID is required.' });
+  if (!github_url || typeof github_url !== 'string') {
+    return res.status(400).json({ error: '"github_url" is required.' });
   }
   if (!clerk_user_id || typeof clerk_user_id !== 'string') {
     return res.status(400).json({ error: '"clerk_user_id" is required.' });
   }
 
-  const server = await queries.claimServer(pool, server_id, clerk_user_id);
+  // Ownership checks — both must pass before any DB work
+  if (!github_username) {
+    return res.status(403).json({
+      error: 'GitHub account not connected. Please connect your GitHub account in profile settings before claiming a server.',
+    });
+  }
+
+  const url = github_url.trim().replace(/\.git$/, '');
+  if (!GITHUB_URL_RE.test(url)) {
+    return res.status(400).json({ error: 'Must be a valid GitHub repository URL.' });
+  }
+
+  const urlOwner    = new URL(url).pathname.split('/')[1].toLowerCase();
+  const claimingUser = github_username.toLowerCase();
+
+  if (urlOwner !== claimingUser) {
+    return res.status(403).json({
+      error: `Ownership verification failed. The repo belongs to "${urlOwner}" but your GitHub username is "${claimingUser}". You can only claim servers from your own GitHub account.`,
+    });
+  }
+
+  // Ensure the server row exists — it may not be in the DB yet if claim races submit
+  const existing = await queries.findByGithubUrl(pool, url);
+  if (!existing) {
+    await queries.insertServer(pool, url);
+  }
+
+  const server = await queries.claimServer(pool, url, clerk_user_id);
   if (!server) {
-    return res.status(409).json({ error: 'Server not found, not confirmed, or already claimed by another user.' });
+    return res.status(409).json({ error: 'This server is already claimed by another account.' });
   }
 
   res.json({ data: server });

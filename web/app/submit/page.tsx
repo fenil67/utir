@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { useUser } from "@clerk/nextjs";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
 
@@ -16,7 +17,7 @@ function validate(url: string): string | null {
 type State =
   | { phase: "idle" }
   | { phase: "loading" }
-  | { phase: "queued";  url: string }
+  | { phase: "queued";  url: string; claimed: boolean }
   | { phase: "exists";  id: string }
   | { phase: "error";   message: string };
 
@@ -54,10 +55,11 @@ const INFO_CARDS = [
 ];
 
 export default function SubmitPage() {
-  const [url,       setUrl]       = useState("");
-  const [touched,   setTouched]   = useState(false);
-  const [state,     setState]     = useState<State>({ phase: "idle" });
+  const [url,     setUrl]     = useState("");
+  const [touched, setTouched] = useState(false);
+  const [state,   setState]   = useState<State>({ phase: "idle" });
 
+  const { user } = useUser();
   const validationError = touched ? validate(url) : null;
 
   async function handleSubmit(e: React.FormEvent) {
@@ -88,7 +90,29 @@ export default function SubmitPage() {
         return;
       }
 
-      setState({ phase: "queued", url: url.trim() });
+      // Auto-claim for logged-in users (best-effort, silent fail)
+      let claimed = false;
+      if (user) {
+        try {
+          const claimRes = await fetch(`${API_BASE}/api/claim`, {
+            method:  "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              github_url:      url.trim(),
+              clerk_user_id:   user.id,
+              clerk_email:     user.primaryEmailAddress?.emailAddress,
+              github_username: user.externalAccounts?.find(
+                (a) => a.provider === "github"
+              )?.username,
+            }),
+          });
+          claimed = claimRes.ok;
+        } catch {
+          // silent fail — publisher can claim manually from dashboard
+        }
+      }
+
+      setState({ phase: "queued", url: url.trim(), claimed });
     } catch {
       setState({ phase: "error", message: "Could not reach the server. Please try again." });
     }
@@ -122,17 +146,33 @@ export default function SubmitPage() {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
             <div>
-              <p className="text-emerald-400 font-semibold mb-1">Your server has been queued for scanning.</p>
-              <p className="text-sm text-gray-400 mb-2">Check back in a few hours to see your trust score.</p>
+              <p className="text-emerald-400 font-semibold mb-1">
+                {state.claimed
+                  ? "Your server has been queued for scanning and added to your dashboard."
+                  : "Your server has been queued for scanning."}
+              </p>
+              <p className="text-sm text-gray-400 mb-2">
+                Check back in a few hours to see your trust score.
+              </p>
               <p className="text-xs text-gray-500 font-mono break-all">{state.url}</p>
             </div>
           </div>
-          <button
-            onClick={reset}
-            className="mt-4 text-sm text-emerald-400 hover:text-emerald-300 transition-colors underline underline-offset-2"
-          >
-            Submit another
-          </button>
+          <div className="mt-4 flex items-center gap-4">
+            {state.claimed && (
+              <Link
+                href="/dashboard"
+                className="text-sm text-emerald-400 hover:text-emerald-300 transition-colors font-medium"
+              >
+                View my dashboard →
+              </Link>
+            )}
+            <button
+              onClick={reset}
+              className="text-sm text-gray-500 hover:text-gray-300 transition-colors underline underline-offset-2"
+            >
+              Submit another
+            </button>
+          </div>
         </div>
       )}
 

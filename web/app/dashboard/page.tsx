@@ -44,6 +44,7 @@ export interface DashboardServer {
   owner: string | null;
   last_pushed: string | null;
   claimed_at: string;
+  confirmed: boolean;
   trust_score: number | null;
   auth_tier: string | null;
   static_score: number | null;
