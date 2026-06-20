@@ -20,12 +20,26 @@ export interface Server {
   last_scanned: string | null;
 }
 
+export interface MonitorEvent {
+  id:               string;
+  change_type:      string;
+  severity:         string;
+  detail:           string | null;
+  detected_at:      string;
+  rescan_triggered: boolean;
+  rescan_score:     number | null;
+  acknowledged:     boolean;
+}
+
 export interface ServerDetail extends Server {
-  description: string | null;
-  behavior_score: number | null;
-  findings: unknown[];
-  raw_output: unknown;
-  tools: Tool[];
+  description:          string | null;
+  behavior_score:       number | null;
+  findings:             unknown[];
+  raw_output:           unknown;
+  tools:                Tool[];
+  monitor_flag:         string | null;
+  last_monitored:       string | null;
+  latest_monitor_event: MonitorEvent | null;
 }
 
 export interface Tool {

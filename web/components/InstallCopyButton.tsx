@@ -35,6 +35,18 @@ export default function InstallCopyButton({
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ server_id: serverId }),
     }).catch(() => {});
+
+    // Track install copy as a pageview with special path for analytics
+    fetch(`${API_BASE}/api/analytics/pageview`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        path:       `/servers/${serverId}/install`,
+        server_id:  serverId,
+        referrer:   document.referrer || null,
+        user_agent: navigator.userAgent,
+      }),
+    }).catch(() => {});
   }
 
   return (

@@ -384,11 +384,12 @@ def save_scan(conn, server_id: str, trust_score: int, auth_tier: str,
 # ── per-repo pipeline ─────────────────────────────────────────────────────────
 
 def scan_repo(conn, idx: int, total: int, server_id: str,
-              github_url: str, name: str, last_pushed) -> bool:
+              github_url: str, name: str, last_pushed,
+              force: bool = False) -> bool:
     prefix = f"Scanned {idx}/{total} [{name}]"
 
-    # Skip if a scan row already exists (e.g. partial previous run)
-    if already_scanned(conn, server_id):
+    # Skip if a scan row already exists, unless forced (monitor rescans)
+    if not force and already_scanned(conn, server_id):
         print(f"{prefix} — skipped — already scanned", flush=True)
         return False
 
@@ -547,6 +548,46 @@ def main() -> dict:
     print(f"\nDone. Scanned {n_ok} servers ({n_skipped} skipped, {n_errors} errors).",
           flush=True)
     return {"scanned": n_ok, "skipped": n_skipped, "errors": n_errors}
+
+
+def scan_single_server(server_id: str, github_url: str) -> int | None:
+    """
+    Force-rescan a specific server and return the new trust score.
+    Always inserts a fresh row in scans (builds history).
+    Called by the runtime monitor on high/critical change detection.
+    """
+    conn = psycopg2.connect(DATABASE_URL)
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT name, last_pushed FROM servers WHERE id = %s",
+                (server_id,),
+            )
+            row = cur.fetchone()
+        if not row:
+            return None
+
+        name, last_pushed = row
+        print(f"\n[monitor rescan] {name}", flush=True)
+
+        ok = scan_repo(
+            conn, 1, 1, server_id, github_url,
+            name or github_url, last_pushed,
+            force=True,
+        )
+        if not ok:
+            return None
+
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT trust_score FROM scans WHERE server_id = %s "
+                "ORDER BY scanned_at DESC LIMIT 1",
+                (server_id,),
+            )
+            score_row = cur.fetchone()
+        return score_row[0] if score_row else None
+    finally:
+        conn.close()
 
 
 if __name__ == "__main__":

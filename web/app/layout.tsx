@@ -4,6 +4,7 @@ import "./globals.css";
 import Link from "next/link";
 import { ClerkProvider } from "@clerk/nextjs";
 import NavAuthButtons from "@/components/NavAuthButtons";
+import Analytics from "@/components/Analytics";
 
 const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
 const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
@@ -35,10 +36,14 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                 >
                   GitHub
                 </a>
+                {process.env.NEXT_PUBLIC_ADMIN_KEY && (
+                  <Link href="/admin" className="hover:text-white transition-colors">Admin</Link>
+                )}
                 <NavAuthButtons />
               </div>
             </nav>
           </header>
+          <Analytics />
           <main className="flex-1">{children}</main>
           <footer className="border-t border-white/10 px-6 py-6 text-center text-xs text-gray-600">
             utir — MCP Server Trust Registry

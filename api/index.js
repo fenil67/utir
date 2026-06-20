@@ -116,6 +116,11 @@ app.get('/api/search', asyncHandler(async (req, res) => {
   }
 
   const results = await queries.searchServers(pool, q, queryEmbedding);
+
+  // Log search asynchronously — don't block the response
+  queries.recordSearchQuery(pool, { query: q, results: results.length })
+    .catch((err) => console.warn('Failed to log search query:', err.message));
+
   res.json({
     data:    results,
     query:   q,
@@ -267,6 +272,95 @@ app.post('/api/admin/pipeline-complete', requireAdminKey, asyncHandler(async (re
 app.get('/api/admin/pipeline-runs', requireAdminKey, asyncHandler(async (_req, res) => {
   const runs = await queries.listPipelineRuns(pool);
   res.json({ data: runs });
+}));
+
+// GET /api/admin/monitor/events?severity=
+app.get('/api/admin/monitor/events', requireAdminKey, asyncHandler(async (req, res) => {
+  const { severity } = req.query;
+  const events = await queries.getMonitorEvents(pool, { severity });
+  res.json({ data: events });
+}));
+
+// POST /api/admin/monitor/events/:id/acknowledge
+app.post('/api/admin/monitor/events/:id/acknowledge', requireAdminKey, asyncHandler(async (req, res) => {
+  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (!UUID_RE.test(req.params.id)) {
+    return res.status(400).json({ error: 'Invalid event ID.' });
+  }
+  await queries.acknowledgeMonitorEvent(pool, req.params.id);
+  res.json({ ok: true });
+}));
+
+// POST /api/admin/run-pipeline  — spawns pipeline in background
+app.post('/api/admin/run-pipeline', requireAdminKey, asyncHandler(async (_req, res) => {
+  const { spawn } = require('child_process');
+  const path      = require('path');
+  const script    = path.join(__dirname, '..', 'scheduler', 'pipeline.py');
+  spawn('python', [script], {
+    detached: true,
+    stdio:    'ignore',
+    env:      { ...process.env },
+  }).unref();
+  res.json({ message: 'Pipeline started in background.' });
+}));
+
+// POST /api/admin/run-monitor  — spawns monitor in background
+app.post('/api/admin/run-monitor', requireAdminKey, asyncHandler(async (_req, res) => {
+  const { spawn } = require('child_process');
+  const path      = require('path');
+  const script    = path.join(__dirname, '..', 'monitor', 'agent.py');
+  spawn('python', [script], {
+    detached: true,
+    stdio:    'ignore',
+    env:      { ...process.env },
+  }).unref();
+  res.json({ message: 'Monitor started in background.' });
+}));
+
+// ── analytics routes ──────────────────────────────────────────────────────────
+
+// POST /api/analytics/pageview  — unauthenticated, fire-and-forget from the web app
+app.post('/api/analytics/pageview', asyncHandler(async (req, res) => {
+  const { path, server_id, referrer, user_agent } = req.body || {};
+
+  if (!path || typeof path !== 'string' || path.length > 500) {
+    return res.status(400).json({ error: 'Valid "path" string required.' });
+  }
+
+  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  const validServerId = server_id && UUID_RE.test(server_id) ? server_id : null;
+
+  await queries.recordPageView(pool, {
+    path:       path.slice(0, 500),
+    server_id:  validServerId,
+    referrer:   referrer   ? String(referrer).slice(0, 1000)   : null,
+    user_agent: user_agent ? String(user_agent).slice(0, 500)  : null,
+    country:    req.headers['cf-ipcountry'] || null,
+  });
+
+  res.status(201).json({ ok: true });
+}));
+
+// GET /api/admin/analytics/overview
+app.get('/api/admin/analytics/overview', requireAdminKey, asyncHandler(async (_req, res) => {
+  const data = await queries.getAnalyticsOverview(pool);
+  res.json({ data });
+}));
+
+// GET /api/admin/analytics/searches
+app.get('/api/admin/analytics/searches', requireAdminKey, asyncHandler(async (_req, res) => {
+  const data = await queries.getRecentSearches(pool);
+  res.json({ data });
+}));
+
+// GET /api/monitor/events/:server_id  — public, per-server history
+app.get('/api/monitor/events/:server_id', asyncHandler(async (req, res) => {
+  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (!UUID_RE.test(req.params.server_id)) {
+    return res.status(400).json({ error: 'Invalid server ID.' });
+  }
+  const events = await queries.getServerMonitorEvents(pool, req.params.server_id);
+  res.json({ data: events });
 }));
 
 // ── error handling ────────────────────────────────────────────────────────────

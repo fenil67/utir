@@ -21,6 +21,12 @@ export default async function HomePage() {
   const servers = serversRes.status === "fulfilled" ? serversRes.value.data : [];
   const stats   = statsRes.status === "fulfilled"   ? statsRes.value.data   : null;
 
+  const totalScanned = stats ? parseInt(stats.total_scanned) : null;
+  const lowTrust     = stats ? parseInt(stats.low_trust)     : null;
+  const lowTrustPct  = totalScanned && lowTrust != null && totalScanned > 0
+    ? Math.round((lowTrust / totalScanned) * 100)
+    : null;
+
   return (
     <div className="max-w-6xl mx-auto px-6 py-16">
 
@@ -35,7 +41,8 @@ export default async function HomePage() {
           <span className="text-emerald-400">MCP servers</span>
         </h1>
         <p className="text-lg text-gray-400 max-w-xl mx-auto mb-8">
-          661 servers scanned. 78% have significant security issues.
+          {totalScanned != null ? totalScanned.toLocaleString() : "…"} servers scanned.{" "}
+          {lowTrustPct != null ? `${lowTrustPct}%` : "…"} have significant security issues.{" "}
           Find the ones you can trust.
         </p>
 
@@ -55,17 +62,17 @@ export default async function HomePage() {
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-14">
         <StatCard
           label="Total Scanned"
-          value={stats ? Number(stats.total_scanned).toLocaleString() : "661"}
+          value={totalScanned != null ? totalScanned.toLocaleString() : "…"}
           sub={stats ? `${Number(stats.total_servers).toLocaleString()} total in registry` : undefined}
         />
         <StatCard
           label="High Trust (score ≥ 70)"
-          value={stats ? Number(stats.high_trust).toLocaleString() : "12"}
+          value={stats ? Number(stats.high_trust).toLocaleString() : "…"}
           sub={stats?.avg_score ? `Avg score: ${stats.avg_score}` : undefined}
         />
         <StatCard
           label="Tier F — No Auth"
-          value={stats ? Number(stats.tier_f).toLocaleString() : "85"}
+          value={stats ? Number(stats.tier_f).toLocaleString() : "…"}
           sub="No authentication found"
         />
       </div>

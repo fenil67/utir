@@ -111,7 +111,7 @@ async function listServers(pool, {
 }
 
 /**
- * Full server detail: server row + latest scan findings + tools list.
+ * Full server detail: server row + latest scan findings + tools list + monitor state.
  *
  * @param {import('pg').Pool} pool
  * @param {string} id  UUID
@@ -121,6 +121,7 @@ async function getServer(pool, id) {
     SELECT
       s.id, s.name, s.github_url, s.description, s.language,
       s.stars, s.owner, s.topics, s.last_pushed, s.created_at,
+      s.monitor_flag, s.last_monitored,
       sc.trust_score, sc.auth_tier, sc.static_score, sc.deps_score,
       sc.behavior_score, sc.maintenance_score, sc.findings,
       sc.raw_output, sc.scanned_at AS last_scanned
@@ -141,16 +142,27 @@ async function getServer(pool, id) {
     ORDER BY name
   `;
 
-  const [serverResult, toolsResult] = await Promise.all([
+  const monitorSql = `
+    SELECT id, change_type, severity, detail, detected_at,
+           rescan_triggered, rescan_score, acknowledged
+    FROM monitor_events
+    WHERE server_id = $1
+    ORDER BY detected_at DESC
+    LIMIT 1
+  `;
+
+  const [serverResult, toolsResult, monitorResult] = await Promise.all([
     pool.query(serverSql, [id]),
     pool.query(toolsSql, [id]),
+    pool.query(monitorSql, [id]),
   ]);
 
   if (serverResult.rows.length === 0) return null;
 
   return {
     ...serverResult.rows[0],
-    tools: toolsResult.rows,
+    tools:                toolsResult.rows,
+    latest_monitor_event: monitorResult.rows[0] || null,
   };
 }
 
@@ -407,6 +419,73 @@ async function listPipelineRuns(pool) {
 }
 
 /**
+ * List recent monitor events (admin).
+ *
+ * @param {import('pg').Pool} pool
+ * @param {{ severity?: string, limit?: number }} opts
+ */
+async function getMonitorEvents(pool, { severity, limit = 50 } = {}) {
+  const conditions = [];
+  const params     = [];
+
+  if (severity) {
+    params.push(severity);
+    conditions.push(`me.severity = $${params.length}`);
+  }
+
+  const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+
+  params.push(limit);
+  const sql = `
+    SELECT
+      me.id, me.server_id, me.change_type, me.severity, me.detail,
+      me.old_value, me.new_value, me.detected_at,
+      me.rescan_triggered, me.rescan_score, me.acknowledged,
+      s.name AS server_name, s.github_url AS server_github_url
+    FROM monitor_events me
+    JOIN servers s ON s.id = me.server_id
+    ${where}
+    ORDER BY me.detected_at DESC
+    LIMIT $${params.length}
+  `;
+
+  const result = await pool.query(sql, params);
+  return result.rows;
+}
+
+/**
+ * Monitor event history for one server (public — publishers can see their own).
+ *
+ * @param {import('pg').Pool} pool
+ * @param {string} serverId  UUID
+ */
+async function getServerMonitorEvents(pool, serverId, limit = 20) {
+  const result = await pool.query(
+    `SELECT id, change_type, severity, detail, old_value, new_value,
+            detected_at, rescan_triggered, rescan_score, acknowledged
+     FROM monitor_events
+     WHERE server_id = $1
+     ORDER BY detected_at DESC
+     LIMIT $2`,
+    [serverId, limit],
+  );
+  return result.rows;
+}
+
+/**
+ * Mark a monitor event as acknowledged.
+ *
+ * @param {import('pg').Pool} pool
+ * @param {string} eventId  UUID
+ */
+async function acknowledgeMonitorEvent(pool, eventId) {
+  await pool.query(
+    'UPDATE monitor_events SET acknowledged = TRUE WHERE id = $1',
+    [eventId],
+  );
+}
+
+/**
  * Claim a server for a Clerk user, identified by github_url.
  * Works whether or not the server is confirmed yet.
  * Returns null if the server is already claimed by a different user.
@@ -522,6 +601,137 @@ async function recordInstallEvent(pool, serverId, ipHash) {
   );
 }
 
+// ── analytics ─────────────────────────────────────────────────────────────────
+
+/**
+ * Record a page view.
+ *
+ * @param {import('pg').Pool} pool
+ * @param {{ path: string, server_id?: string|null, referrer?: string|null, user_agent?: string|null, country?: string|null }} opts
+ */
+async function recordPageView(pool, { path, server_id, referrer, user_agent, country }) {
+  await pool.query(
+    `INSERT INTO page_views (path, server_id, referrer, user_agent, country)
+     VALUES ($1, $2, $3, $4, $5)`,
+    [path, server_id || null, referrer || null, user_agent || null, country || null]
+  );
+}
+
+/**
+ * Log a search query with result count.
+ *
+ * @param {import('pg').Pool} pool
+ * @param {{ query: string, results: number }} opts
+ */
+async function recordSearchQuery(pool, { query, results }) {
+  await pool.query(
+    `INSERT INTO search_queries (query, results) VALUES ($1, $2)`,
+    [query, results ?? null]
+  );
+}
+
+/**
+ * Aggregate analytics overview for admin dashboard.
+ *
+ * @param {import('pg').Pool} pool
+ */
+async function getAnalyticsOverview(pool) {
+  const [
+    overviewResult,
+    topPagesResult,
+    topServersResult,
+    referrersResult,
+    searchCountResult,
+    installsResult,
+    topInstalledResult,
+  ] = await Promise.all([
+    pool.query(`
+      SELECT
+        COUNT(*) FILTER (WHERE viewed_at >= NOW() - INTERVAL '1 day')  AS views_today,
+        COUNT(*) FILTER (WHERE viewed_at >= NOW() - INTERVAL '7 days') AS views_week
+      FROM page_views
+    `),
+    pool.query(`
+      SELECT path, COUNT(*) AS count
+      FROM page_views
+      WHERE viewed_at >= NOW() - INTERVAL '7 days'
+      GROUP BY path
+      ORDER BY count DESC
+      LIMIT 10
+    `),
+    pool.query(`
+      SELECT s.name, s.github_url, COUNT(*) AS count
+      FROM page_views pv
+      JOIN servers s ON s.id = pv.server_id
+      WHERE pv.viewed_at >= NOW() - INTERVAL '7 days'
+        AND pv.server_id IS NOT NULL
+      GROUP BY s.id, s.name, s.github_url
+      ORDER BY count DESC
+      LIMIT 10
+    `),
+    pool.query(`
+      SELECT referrer, COUNT(*) AS count
+      FROM page_views
+      WHERE viewed_at >= NOW() - INTERVAL '7 days'
+        AND referrer IS NOT NULL
+        AND referrer != ''
+      GROUP BY referrer
+      ORDER BY count DESC
+      LIMIT 10
+    `),
+    pool.query(`
+      SELECT COUNT(*) AS count
+      FROM search_queries
+      WHERE searched_at >= NOW() - INTERVAL '1 day'
+    `),
+    pool.query(`
+      SELECT
+        COUNT(*) FILTER (WHERE viewed_at >= NOW() - INTERVAL '1 day')  AS installs_today,
+        COUNT(*) FILTER (WHERE viewed_at >= NOW() - INTERVAL '7 days') AS installs_week
+      FROM page_views
+      WHERE path LIKE '%/install%'
+    `),
+    pool.query(`
+      SELECT s.name, s.github_url, COUNT(*) AS count
+      FROM page_views pv
+      JOIN servers s ON s.id = pv.server_id
+      WHERE pv.path LIKE '%/install%'
+        AND pv.viewed_at >= NOW() - INTERVAL '7 days'
+        AND pv.server_id IS NOT NULL
+      GROUP BY s.id, s.name, s.github_url
+      ORDER BY count DESC
+      LIMIT 10
+    `),
+  ]);
+
+  return {
+    ...overviewResult.rows[0],
+    ...installsResult.rows[0],
+    searches_today:       parseInt(searchCountResult.rows[0].count, 10),
+    top_pages:            topPagesResult.rows,
+    top_servers:          topServersResult.rows,
+    referrers:            referrersResult.rows,
+    top_installed_servers: topInstalledResult.rows,
+  };
+}
+
+/**
+ * Return the most recent search queries.
+ *
+ * @param {import('pg').Pool} pool
+ * @param {number} limit
+ */
+async function getRecentSearches(pool, limit = 100) {
+  const result = await pool.query(
+    `SELECT query, results, searched_at
+     FROM search_queries
+     ORDER BY searched_at DESC
+     LIMIT $1`,
+    [limit]
+  );
+  return result.rows;
+}
+
 module.exports = {
   listServers,
   getServer,
@@ -532,7 +742,14 @@ module.exports = {
   insertServer,
   insertPipelineRun,
   listPipelineRuns,
+  getMonitorEvents,
+  getServerMonitorEvents,
+  acknowledgeMonitorEvent,
   claimServer,
   getDashboardData,
   recordInstallEvent,
+  recordPageView,
+  recordSearchQuery,
+  getAnalyticsOverview,
+  getRecentSearches,
 };
