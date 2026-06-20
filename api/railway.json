@@ -3,7 +3,7 @@
     "builder": "NIXPACKS"
   },
   "deploy": {
-    "startCommand": "python scheduler/cron.py",
+    "startCommand": "node index.js",
     "restartPolicyType": "ON_FAILURE"
   }
 }
