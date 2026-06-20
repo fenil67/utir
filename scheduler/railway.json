@@ -3,7 +3,7 @@
     "builder": "NIXPACKS"
   },
   "deploy": {
-    "startCommand": "python cron.py --run-now",
-    "restartPolicyType": "NEVER"
+    "startCommand": "python cron.py",
+    "restartPolicyType": "ON_FAILURE"
   }
 }
