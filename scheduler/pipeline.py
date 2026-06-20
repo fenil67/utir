@@ -123,7 +123,7 @@ def notify_api(summary: dict):
         resp = requests.post(
             f"{API_BASE}/api/admin/pipeline-complete",
             json=summary,
-            timeout=10,
+            timeout=30,
         )
         if resp.ok:
             log.info("API notified successfully.")
