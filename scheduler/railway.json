@@ -3,7 +3,7 @@
     "builder": "NIXPACKS"
   },
   "deploy": {
-    "startCommand": "python cron.py --run-now",
+    "startCommand": "python scheduler/cron.py --run-now",
     "restartPolicyType": "NEVER"
   }
 }
