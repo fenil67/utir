@@ -1,0 +1,11 @@
+psycopg2-binary
+requests
+python-dotenv
+schedule
+gitpython
+semgrep
+bandit
+pip-audit
+openai
+langchain
+langgraph

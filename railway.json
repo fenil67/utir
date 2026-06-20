@@ -1,0 +1,9 @@
+{
+  "build": {
+    "builder": "NIXPACKS"
+  },
+  "deploy": {
+    "startCommand": "python scheduler/cron.py --run-now",
+    "restartPolicyType": "NEVER"
+  }
+}
