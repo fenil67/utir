@@ -237,11 +237,7 @@ app.post('/api/dashboard/install-event', asyncHandler(async (req, res) => {
     return res.status(400).json({ error: 'Valid "server_id" UUID is required.' });
   }
 
-  // Hash the IP so we store no PII
-  const raw = req.ip || req.headers['x-forwarded-for'] || '';
-  const ipHash = crypto.createHash('sha256').update(raw).digest('hex');
-
-  await queries.recordInstallEvent(pool, server_id, ipHash);
+  await queries.recordInstallEvent(pool, server_id);
   res.status(201).json({ ok: true });
 }));
 
@@ -291,30 +287,14 @@ app.post('/api/admin/monitor/events/:id/acknowledge', requireAdminKey, asyncHand
   res.json({ ok: true });
 }));
 
-// POST /api/admin/run-pipeline  — spawns pipeline in background
+// POST /api/admin/run-pipeline  — pipeline runs in the scheduler container
 app.post('/api/admin/run-pipeline', requireAdminKey, asyncHandler(async (_req, res) => {
-  const { spawn } = require('child_process');
-  const path      = require('path');
-  const script    = path.join(__dirname, '..', 'scheduler', 'pipeline.py');
-  spawn('python', [script], {
-    detached: true,
-    stdio:    'ignore',
-    env:      { ...process.env },
-  }).unref();
-  res.json({ message: 'Pipeline started in background.' });
+  res.json({ message: 'Pipeline runs automatically at 02:00 UTC daily via the scheduler service. To trigger manually, use: railway run --service utir-scheduler python cron.py --run-now' });
 }));
 
-// POST /api/admin/run-monitor  — spawns monitor in background
+// POST /api/admin/run-monitor  — monitor runs in the scheduler container
 app.post('/api/admin/run-monitor', requireAdminKey, asyncHandler(async (_req, res) => {
-  const { spawn } = require('child_process');
-  const path      = require('path');
-  const script    = path.join(__dirname, '..', 'monitor', 'agent.py');
-  spawn('python', [script], {
-    detached: true,
-    stdio:    'ignore',
-    env:      { ...process.env },
-  }).unref();
-  res.json({ message: 'Monitor started in background.' });
+  res.json({ message: 'Pipeline runs automatically at 02:00 UTC daily via the scheduler service. To trigger manually, use: railway run --service utir-scheduler python cron.py --run-now' });
 }));
 
 // ── analytics routes ──────────────────────────────────────────────────────────

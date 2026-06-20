@@ -592,12 +592,11 @@ async function getDashboardData(pool, clerkUserId) {
  *
  * @param {import('pg').Pool} pool
  * @param {string} serverId UUID
- * @param {string|null} ipHash  SHA-256 of client IP (already hashed by caller)
  */
-async function recordInstallEvent(pool, serverId, ipHash) {
+async function recordInstallEvent(pool, serverId) {
   await pool.query(
-    `INSERT INTO install_events (server_id, ip_hash) VALUES ($1, $2)`,
-    [serverId, ipHash || null]
+    `INSERT INTO install_events (server_id) VALUES ($1)`,
+    [serverId]
   );
 }
 
