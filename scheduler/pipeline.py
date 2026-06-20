@@ -23,8 +23,9 @@ import requests
 from dotenv import load_dotenv
 
 # ── path setup so we can import sibling packages ──────────────────────────────
+sys.path.insert(0, '/app')
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(ROOT))
 
 load_dotenv(ROOT / ".env")
 

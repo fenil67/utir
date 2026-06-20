@@ -61,7 +61,7 @@ log = logging.getLogger("cron")
 def run_pipeline_job():
     log.info("Scheduled pipeline triggered.")
     try:
-        from scheduler.pipeline import run_pipeline
+        from pipeline import run_pipeline
         summary = run_pipeline()
         log.info("Pipeline job finished. Summary: %s", summary.get("totals", {}))
     except Exception as e:
