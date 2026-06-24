@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { getServer, getMonitorEvents } from "@/lib/api";
+import { getServer } from "@/lib/api";
 import TrustBadge from "@/components/TrustBadge";
 import ServerDetailTabs from "@/components/ServerDetailTabs";
 
@@ -21,9 +21,6 @@ export default async function ServerDetailPage({ params }: Props) {
 
   if (!server) notFound();
 
-  const monitorEvents = await getMonitorEvents(id)
-    .then((r) => r.data)
-    .catch(() => []);
 
   const repoName = server.name?.split("/").pop() ?? server.name;
 
@@ -157,7 +154,6 @@ export default async function ServerDetailPage({ params }: Props) {
       {/* Tabs */}
       <ServerDetailTabs
         server={server}
-        monitorEvents={monitorEvents}
         installSnippet={installSnippet}
       />
     </div>

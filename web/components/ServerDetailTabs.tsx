@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { ServerDetail, MonitorEvent } from "@/lib/api";
+import { ServerDetail } from "@/lib/api";
 import InstallCopyButton from "@/components/InstallCopyButton";
 
 // ── helpers ───────────────────────────────────────────────────────────────────
@@ -20,19 +20,6 @@ function getParamNames(schema: unknown): string[] {
     return Object.keys(s.properties as object);
   }
   return [];
-}
-
-function fmtDate(iso: string) {
-  return new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric" });
-}
-
-function daysSince(iso: string) {
-  return Math.floor((Date.now() - new Date(iso).getTime()) / 86400000);
-}
-
-function formatEventLabel(event: MonitorEvent): string {
-  if (event.detail) return event.detail;
-  return event.change_type.replace(/_/g, " ");
 }
 
 // ── ScoreBar ──────────────────────────────────────────────────────────────────
@@ -80,22 +67,20 @@ function ScoreBar({
 
 // ── main component ────────────────────────────────────────────────────────────
 
-type Tab = "overview" | "tools" | "performance";
+type Tab = "overview" | "tools";
 
 interface Props {
   server: ServerDetail;
-  monitorEvents: MonitorEvent[];
   installSnippet: string;
 }
 
-export default function ServerDetailTabs({ server, monitorEvents, installSnippet }: Props) {
+export default function ServerDetailTabs({ server, installSnippet }: Props) {
   const [tab, setTab] = useState<Tab>("overview");
   const tierInfo = server.auth_tier ? AUTH_TIER_INFO[server.auth_tier] : null;
 
   const tabs: { id: Tab; label: string }[] = [
     { id: "overview", label: "Overview" },
     { id: "tools", label: server.tools.length > 0 ? `Tools (${server.tools.length})` : "Tools" },
-    { id: "performance", label: "Performance" },
   ];
 
   return (
@@ -279,86 +264,6 @@ export default function ServerDetailTabs({ server, monitorEvents, installSnippet
         </div>
       )}
 
-      {/* ── Performance ──────────────────────────────────────────────────────── */}
-      {tab === "performance" && (
-        <div className="space-y-6">
-          {/* Stats row */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <div className="rounded-xl bg-white/[0.03] border border-white/10 p-4">
-              <p className="text-xs text-gray-500 mb-1">Last Scanned</p>
-              <p className="text-white font-medium text-sm">
-                {server.last_scanned
-                  ? new Date(server.last_scanned).toLocaleDateString()
-                  : "Not scanned"}
-              </p>
-            </div>
-            <div className="rounded-xl bg-white/[0.03] border border-white/10 p-4">
-              <p className="text-xs text-gray-500 mb-1">Days Since Commit</p>
-              <p className="text-white font-medium text-sm">
-                {server.last_pushed ? `${daysSince(server.last_pushed)}d ago` : "—"}
-              </p>
-            </div>
-            <div className="rounded-xl bg-white/[0.03] border border-white/10 p-4">
-              <p className="text-xs text-gray-500 mb-1">Stars</p>
-              <p className="text-white font-medium text-sm">{server.stars.toLocaleString()}</p>
-            </div>
-            <div className="rounded-xl bg-white/[0.03] border border-white/10 p-4">
-              <p className="text-xs text-gray-500 mb-1">Trust Score</p>
-              <p className="text-white font-medium text-sm">
-                {server.trust_score !== null ? `${server.trust_score}/100` : "—"}
-              </p>
-            </div>
-          </div>
-
-          {/* Score history */}
-          <div className="rounded-xl bg-white/[0.03] border border-white/10 p-5">
-            <h2 className="text-sm font-semibold text-white mb-3">Score History</h2>
-            <p className="text-sm text-gray-500">
-              Score history builds up over nightly scans. Check back after this server has been
-              scanned multiple times.
-            </p>
-          </div>
-
-          {/* Monitor events timeline */}
-          <div className="rounded-xl bg-white/[0.03] border border-white/10 p-5">
-            <h2 className="text-sm font-semibold text-white mb-4">Scan Events</h2>
-            {monitorEvents.length === 0 ? (
-              <p className="text-sm text-gray-500">No scan events yet.</p>
-            ) : (
-              <div>
-                {monitorEvents.slice(0, 5).map((event, i) => (
-                  <div key={event.id} className="flex gap-4 pb-4 relative">
-                    {i < Math.min(monitorEvents.length, 5) - 1 && (
-                      <div className="absolute left-[7px] top-4 bottom-0 w-px bg-white/[0.08]" />
-                    )}
-                    <div
-                      className={`shrink-0 w-3.5 h-3.5 rounded-full mt-0.5 border-2 ${
-                        event.severity === "critical"
-                          ? "bg-red-500 border-red-500"
-                          : event.severity === "high"
-                          ? "bg-yellow-500 border-yellow-500"
-                          : "bg-white/20 border-white/20"
-                      }`}
-                    />
-                    <div className="min-w-0">
-                      <p className="text-sm text-gray-300">
-                        <span className="text-gray-500">{fmtDate(event.detected_at)}</span>
-                        {" — "}
-                        {formatEventLabel(event)}
-                      </p>
-                      {event.rescan_score !== null && (
-                        <p className="text-xs text-gray-600 mt-0.5">
-                          Rescan score: {event.rescan_score}/100
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-      )}
     </div>
   );
 }
