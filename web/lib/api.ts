@@ -100,3 +100,7 @@ export async function searchServers(q: string) {
 export async function getStats() {
   return apiFetch<{ data: Stats }>("/api/stats");
 }
+
+export async function getMonitorEvents(serverId: string) {
+  return apiFetch<{ data: MonitorEvent[] }>(`/api/monitor/events/${serverId}`);
+}
