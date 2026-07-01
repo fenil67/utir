@@ -49,19 +49,73 @@ _TS_IMPORT_RE = re.compile(
 )
 
 # tool extraction
-# Python: @server.tool() or @mcp.tool()  — captures optional string arg as name
+# Python: any @*.tool() decorator — captures optional string name arg
 _PY_TOOL_DECO_RE = re.compile(
     r'@\w+\.tool\(\s*(?:["\'](?P<name>[^"\']+)["\'])?\s*\)',
 )
 _PY_FUNC_RE = re.compile(r'def\s+(\w+)\s*\(')
 # Python docstring immediately after def line
 _PY_DOCSTRING_RE = re.compile(r'^\s*"""(.*?)"""', re.DOTALL)
+# Python: tool_name = "..." assignment near a function
+_PY_TOOL_NAME_RE = re.compile(r'tool_name\s*=\s*["\'](?P<name>[^"\']+)["\']')
 
-# TypeScript: server.tool("name", "description", …)
+# TypeScript/JS: various tool registration patterns
+# Matches: server.tool(, .tool(, addTool(, registerTool(
 _TS_TOOL_RE = re.compile(
-    r'server\.tool\(\s*["\'](?P<name>[^"\']+)["\']\s*'
+    r'(?:server\.tool|[.\s]tool|addTool|registerTool)\s*\(\s*["\'](?P<name>[^"\']+)["\']\s*'
     r'(?:,\s*["\'](?P<desc>[^"\']*)["\'])?',
 )
+# TypeScript/JS: { name: "...", description: "..." } object literal in tools array
+_TS_TOOL_OBJ_RE = re.compile(
+    r'\{[^}]*?["\']?name["\']?\s*:\s*["\'](?P<name>[^"\']+)["\'][^}]*?'
+    r'(?:["\']?description["\']?\s*:\s*["\'](?P<desc>[^"\']*)["\'])?',
+    re.DOTALL,
+)
+
+
+# ── tool-extraction helpers ───────────────────────────────────────────────────
+
+# Directories to skip entirely during tool extraction
+_SKIP_DIRS = frozenset({
+    "test", "tests", "__tests__",
+    "docs", "documentation", "examples", "example",
+    "fixtures", "mocks", "__mocks__",
+    "node_modules",
+})
+
+# Tool name prefixes that signal test/template noise (case-insensitive)
+_REJECT_PREFIX_RE = re.compile(
+    r'^(?:test|temp|example|sample|mock|fake|dummy|tool|group|extension|my|your)',
+    re.IGNORECASE,
+)
+
+
+def _should_skip_path(f: Path) -> bool:
+    """Return True if the file lives in a directory we want to ignore."""
+    return any(part in _SKIP_DIRS for part in f.parts)
+
+
+def _is_valid_tool_name(name: str) -> bool:
+    """Return False for names that look like test fixtures or template noise."""
+    if not name:
+        return False
+    # spaces → not a real tool name (real names use underscores/camelCase)
+    if ' ' in name:
+        return False
+    # too short
+    if len(name) < 3:
+        return False
+    # starts with digit
+    if name[0].isdigit():
+        return False
+    # matches noisy prefixes
+    if _REJECT_PREFIX_RE.match(name):
+        return False
+    # short generic word with no underscore (e.g. "get", "list", "add")
+    if len(name) < 5 and '_' not in name:
+        return False
+    return True
+
 
 
 # ── detection logic ───────────────────────────────────────────────────────────
@@ -124,13 +178,17 @@ def detect(repo_dir: Path) -> tuple[bool, str]:
 def extract_tools_python(repo_dir: Path) -> list[dict]:
     tools = []
     for f in repo_dir.rglob("*.py"):
+        if _should_skip_path(f):
+            continue
         text = _read(f)
+        if not _PY_IMPORT_RE.search(text):
+            continue
         lines = text.splitlines()
         for i, line in enumerate(lines):
             m = _PY_TOOL_DECO_RE.search(line)
             if not m:
                 continue
-            # find the next def statement
+            # find the next def statement (search up to 5 lines ahead)
             name = m.group("name")
             desc = ""
             for j in range(i + 1, min(i + 5, len(lines))):
@@ -144,30 +202,96 @@ def extract_tools_python(repo_dir: Path) -> list[dict]:
                     if ds:
                         desc = ds.group(1).strip().splitlines()[0].strip()
                     break
-            if name:
-                tools.append({"name": name, "description": desc or None})
+                # also check for tool_name = "..." pattern before the def
+                tn = _PY_TOOL_NAME_RE.search(lines[j])
+                if tn and not name:
+                    name = tn.group("name")
+            if name and _is_valid_tool_name(name):
+                tools.append({"name": name, "description": desc or None, "_file": str(f)})
     return tools
 
 
 def extract_tools_typescript(repo_dir: Path) -> list[dict]:
     tools = []
-    for f in repo_dir.rglob("*.ts"):
-        text = _read(f)
-        for m in _TS_TOOL_RE.finditer(text):
-            tools.append({
-                "name": m.group("name"),
-                "description": m.group("desc") or None,
-            })
+    for pattern in ("*.ts", "*.js", "*.mjs", "*.cjs"):
+        for f in repo_dir.rglob(pattern):
+            if _should_skip_path(f):
+                continue
+            text = _read(f)
+            if not _TS_IMPORT_RE.search(text):
+                continue
+            # Pattern 1: server.tool(, addTool(, registerTool(, .tool(
+            for m in _TS_TOOL_RE.finditer(text):
+                name = m.group("name")
+                if _is_valid_tool_name(name):
+                    tools.append({
+                        "name": name,
+                        "description": m.group("desc") or None,
+                        "_file": str(f),
+                    })
+            # Pattern 2: { name: "...", description: "..." } object literals
+            # Only scan if file looks like it contains a tools array
+            if re.search(r'tools\s*[=:]', text):
+                for m in _TS_TOOL_OBJ_RE.finditer(text):
+                    name = m.group("name")
+                    desc = m.group("desc") if m.lastindex and m.group("desc") else None
+                    if name and len(name) < 100 and _is_valid_tool_name(name):
+                        tools.append({"name": name, "description": desc, "_file": str(f)})
+    return tools
+
+
+def extract_tools_json(repo_dir: Path) -> list[dict]:
+    """Scan JSON files for tool definitions (tools arrays with name/description)."""
+    tools = []
+    candidate_names = {"tools.json", "tool-definitions.json", "tools-manifest.json"}
+    for f in repo_dir.rglob("*.json"):
+        if _should_skip_path(f):
+            continue
+        # Only check files with known tool-definition names or "tool" in the name
+        if f.name not in candidate_names and "tool" not in f.name.lower():
+            continue
+        try:
+            data = json.loads(_read(f))
+        except (json.JSONDecodeError, ValueError):
+            continue
+        # Accept top-level list or {"tools": [...]}
+        items = data if isinstance(data, list) else data.get("tools", [])
+        if not isinstance(items, list):
+            continue
+        for item in items:
+            if isinstance(item, dict) and "name" in item:
+                name = str(item["name"])
+                if _is_valid_tool_name(name):
+                    tools.append({
+                        "name": name,
+                        "description": str(item["description"]) if item.get("description") else None,
+                        "_file": str(f),
+                    })
     return tools
 
 
 def extract_tools(repo_dir: Path) -> list[dict]:
-    seen = set()
+    from collections import defaultdict
+    all_tools = (
+        extract_tools_python(repo_dir)
+        + extract_tools_typescript(repo_dir)
+        + extract_tools_json(repo_dir)
+    )
+    # Count distinct files each name appears in; > 3 = template/pattern noise
+    name_files: dict[str, set] = defaultdict(set)
+    for t in all_tools:
+        name_files[t["name"]].add(t["_file"])
+
+    seen: set[str] = set()
     results = []
-    for t in extract_tools_python(repo_dir) + extract_tools_typescript(repo_dir):
-        if t["name"] not in seen:
-            seen.add(t["name"])
-            results.append(t)
+    for t in all_tools:
+        name = t["name"]
+        if name in seen:
+            continue
+        if len(name_files[name]) > 3:
+            continue
+        seen.add(name)
+        results.append({"name": name, "description": t.get("description")})
     return results
 
 

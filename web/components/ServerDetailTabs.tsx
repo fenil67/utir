@@ -77,10 +77,11 @@ interface Props {
 export default function ServerDetailTabs({ server, installSnippet }: Props) {
   const [tab, setTab] = useState<Tab>("overview");
   const tierInfo = server.auth_tier ? AUTH_TIER_INFO[server.auth_tier] : null;
+  const tools = server?.tools || [];
 
   const tabs: { id: Tab; label: string }[] = [
     { id: "overview", label: "Overview" },
-    { id: "tools", label: server.tools.length > 0 ? `Tools (${server.tools.length})` : "Tools" },
+    { id: "tools", label: tools.length > 0 ? `Tools (${tools.length})` : "Tools" },
   ];
 
   return (
@@ -222,7 +223,9 @@ export default function ServerDetailTabs({ server, installSnippet }: Props) {
       {/* ── Tools ────────────────────────────────────────────────────────────── */}
       {tab === "tools" && (
         <div>
-          {server.tools.length === 0 ? (
+          {console.log("server.tools:", server.tools)}
+          {console.log("tools length:", server.tools?.length)}
+          {tools.length === 0 ? (
             <div className="rounded-xl bg-white/[0.03] border border-white/10 p-10 text-center">
               <p className="text-gray-400 mb-1">No tools detected.</p>
               <p className="text-sm text-gray-600">
@@ -231,34 +234,19 @@ export default function ServerDetailTabs({ server, installSnippet }: Props) {
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {server.tools.map((tool) => {
-                const params = getParamNames(tool.input_schema);
-                return (
-                  <div
-                    key={tool.id}
-                    className="rounded-xl bg-white/[0.03] border border-white/10 p-4"
-                  >
-                    <p className="font-mono text-emerald-400 text-sm font-medium mb-1">
-                      {tool.name}
-                    </p>
-                    {tool.description && (
-                      <p className="text-sm text-gray-400 mb-3">{tool.description}</p>
-                    )}
-                    {params.length > 0 && (
-                      <div className="flex flex-wrap gap-1.5 mt-2">
-                        {params.map((p) => (
-                          <span
-                            key={p}
-                            className="text-xs font-mono bg-white/[0.05] text-gray-500 px-2 py-0.5 rounded"
-                          >
-                            {p}
-                          </span>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
+              {tools.map((tool) => (
+                <div
+                  key={tool.name}
+                  className="rounded-xl bg-white/[0.03] border border-white/10 p-4"
+                >
+                  <p className="font-mono text-emerald-400 text-sm font-medium mb-1">
+                    {tool.name}
+                  </p>
+                  <p className="text-sm text-gray-400">
+                    {tool.description || "No description"}
+                  </p>
+                </div>
+              ))}
             </div>
           )}
         </div>

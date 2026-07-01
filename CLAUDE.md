@@ -1,5 +1,8 @@
 # utir — MCP server trust registry
 
+## Project Path in my Mac Local Machine
+/Users/fenilpatel/Documents/Documents - Fenil’s MacBook Pro/Projects/utir
+
 ## what this project is
 A platform that crawls GitHub/npm for MCP servers, scans them for
 security issues, checks their auth implementation, and produces a

@@ -9,7 +9,11 @@
       "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\('version:', d['version']\\); print\\('exports:', list\\(d.get\\('exports',{}\\).keys\\(\\)\\)[:20]\\)\")",
       "Bash(npx tsc:*)",
       "Bash(npm install:*)",
-      "Bash(python3:*)"
+      "Bash(python3:*)",
+      "Bash(pip install:*)",
+      "Bash(pip3 install:*)",
+      "Bash(python -c ':*)",
+      "Bash(python:*)"
     ]
   }
 }
