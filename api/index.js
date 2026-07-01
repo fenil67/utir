@@ -343,6 +343,27 @@ app.get('/api/monitor/events/:server_id', asyncHandler(async (req, res) => {
   res.json({ data: events });
 }));
 
+// ── contact form ─────────────────────────────────────────────────────────────
+
+app.post('/api/contact', asyncHandler(async (req, res) => {
+  const { name, email, category, message } = req.body ?? {};
+  if (!name || !email || !category || !message) {
+    return res.status(400).json({ error: 'All fields are required.' });
+  }
+  if (message.length < 20) {
+    return res.status(400).json({ error: 'Message must be at least 20 characters.' });
+  }
+  await pool.query(
+    `INSERT INTO contact_submissions (name, email, category, message)
+     VALUES ($1, $2, $3, $4)`,
+    [name.trim(), email.trim().toLowerCase(), category, message.trim()],
+  );
+  res.json({
+    success: true,
+    message: `Message received. We'll get back to you at ${email.trim()} within 48 hours.`,
+  });
+}));
+
 // ── error handling ────────────────────────────────────────────────────────────
 
 // 404 for unmatched routes

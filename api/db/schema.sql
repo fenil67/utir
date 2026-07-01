@@ -43,3 +43,12 @@ CREATE INDEX ON servers USING ivfflat (embedding vector_cosine_ops)
   WITH (lists = 100);
 CREATE INDEX ON scans(server_id);
 CREATE INDEX ON scans(trust_score);
+CREATE TABLE IF NOT EXISTS contact_submissions (
+  id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  submitted_at TIMESTAMP DEFAULT NOW(),
+  name         TEXT,
+  email        TEXT,
+  category     TEXT,
+  message      TEXT,
+  status       TEXT DEFAULT 'new'
+);

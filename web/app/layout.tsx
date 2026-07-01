@@ -28,17 +28,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                 <Link href="/servers" className="hover:text-white transition-colors">Servers</Link>
                 <Link href="/search" className="hover:text-white transition-colors">Search</Link>
                 <Link href="/submit" className="hover:text-white transition-colors">Submit</Link>
-                <a
-                  href="https://github.com"
-                  className="hover:text-white transition-colors"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                >
-                  GitHub
-                </a>
-                {process.env.NEXT_PUBLIC_ADMIN_KEY && (
-                  <Link href="/admin" className="hover:text-white transition-colors">Admin</Link>
-                )}
+                <Link href="/contact" className="hover:text-white transition-colors">Contact</Link>
                 <NavAuthButtons />
               </div>
             </nav>

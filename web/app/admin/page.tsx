@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useUser } from "@clerk/nextjs";
 
 // ── types ─────────────────────────────────────────────────────────────────────
 
@@ -101,8 +102,10 @@ export default function AdminPage() {
 
   const EVENTS_PER_PAGE = 10;
 
-  const ADMIN_KEY = process.env.NEXT_PUBLIC_ADMIN_KEY;
-  const API_BASE  = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
+  const ADMIN_KEY    = process.env.NEXT_PUBLIC_ADMIN_KEY;
+  const API_BASE     = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
+  const OWNER_ID     = process.env.NEXT_PUBLIC_OWNER_CLERK_ID;
+  const { user }     = useUser();
 
   // CRITICAL: only fetch when authed === true
   useEffect(() => {
@@ -164,6 +167,15 @@ export default function AdminPage() {
   // ── loading state (authed but fetch not yet resolved) ─────────────────────
   if (!data) {
     return <div className="p-8 text-gray-500 text-sm">Loading…</div>;
+  }
+
+  // ── owner identity check ──────────────────────────────────────────────────
+  if (OWNER_ID && user?.id !== OWNER_ID) {
+    return (
+      <div style={{ minHeight: "60vh", display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: "12px" }}>
+        <p className="text-gray-400 text-sm">Access denied. This dashboard is restricted.</p>
+      </div>
+    );
   }
 
   // ── post actions ──────────────────────────────────────────────────────────
