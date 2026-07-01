@@ -174,7 +174,7 @@ function AdminDashboard({ adminKey }: { adminKey: string }) {
   }
 
   const flaggedServers = (data?.events ?? []).filter(
-    e => !e.acknowledged && ["critical", "high"].includes(e.severity)
+    (e: MonitorEvent) => !e.acknowledged && ["critical", "high"].includes(e.severity)
   ).length;
 
 
