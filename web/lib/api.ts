@@ -33,7 +33,6 @@ export interface MonitorEvent {
 
 export interface ServerDetail extends Server {
   description:          string | null;
-  behavior_score:       number | null;
   findings:             unknown[];
   raw_output:           unknown;
   tools:                Tool[];

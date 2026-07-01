@@ -49,7 +49,6 @@ export interface DashboardServer {
   auth_tier: string | null;
   static_score: number | null;
   deps_score: number | null;
-  behavior_score: number | null;
   maintenance_score: number | null;
   findings: Finding[] | null;
   last_scanned: string | null;

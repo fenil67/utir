@@ -116,19 +116,13 @@ export default function ServerDetailTabs({ server, installSnippet }: Props) {
                   label="Authentication"
                   score={
                     server.auth_tier
-                      ? ({ A: 30, B: 25, C: 15, F: 0 } as Record<string, number>)[server.auth_tier] ?? null
+                      ? ({ A: 35, B: 28, C: 18, F: 0 } as Record<string, number>)[server.auth_tier] ?? null
                       : null
                   }
-                  max={30}
+                  max={35}
                 />
-                <ScoreBar label="Static Analysis" score={server.static_score} max={25} />
-                <ScoreBar label="Dependencies" score={server.deps_score} max={20} />
-                <ScoreBar
-                  label="Behavior"
-                  score={server.behavior_score ?? 0}
-                  max={15}
-                  note="Sandbox testing not available in cloud environment"
-                />
+                <ScoreBar label="Static Analysis" score={server.static_score} max={30} />
+                <ScoreBar label="Dependencies" score={server.deps_score} max={25} />
                 <ScoreBar label="Maintenance" score={server.maintenance_score} max={10} />
               </div>
             </div>

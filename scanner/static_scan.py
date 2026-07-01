@@ -247,22 +247,22 @@ def calc_static_score(findings: list[dict]) -> int:
     ]
     n = len(significant)
     if n == 0:
-        return 25
+        return 30
     if n <= 2:
-        return 15
-    return 5
+        return 18
+    return 6
 
 
 def calc_deps_score(vuln_count: int) -> int:
     if vuln_count == 0:
-        return 20
+        return 25
     if vuln_count <= 2:
-        return 12
-    return 4
+        return 15
+    return 5
 
 
 def calc_auth_score(tier: str) -> int:
-    return {"A": 30, "B": 25, "C": 15, "F": 0}.get(tier, 0)
+    return {"A": 35, "B": 28, "C": 18, "F": 0}.get(tier, 0)
 
 
 def calc_maintenance_score(last_pushed) -> int:

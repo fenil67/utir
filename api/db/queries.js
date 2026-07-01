@@ -123,7 +123,7 @@ async function getServer(pool, id) {
       s.stars, s.owner, s.topics, s.last_pushed, s.created_at,
       s.monitor_flag, s.last_monitored,
       sc.trust_score, sc.auth_tier, sc.static_score, sc.deps_score,
-      sc.behavior_score, sc.maintenance_score, sc.findings,
+      sc.maintenance_score, sc.findings,
       sc.raw_output, sc.scanned_at AS last_scanned
     FROM servers s
     LEFT JOIN LATERAL (
@@ -518,7 +518,7 @@ async function getDashboardData(pool, clerkUserId) {
       s.id, s.name, s.github_url, s.description, s.language,
       s.stars, s.owner, s.last_pushed, s.claimed_at, s.confirmed,
       sc.trust_score, sc.auth_tier, sc.static_score, sc.deps_score,
-      sc.behavior_score, sc.maintenance_score, sc.findings, sc.scanned_at AS last_scanned
+      sc.maintenance_score, sc.findings, sc.scanned_at AS last_scanned
     FROM servers s
     LEFT JOIN LATERAL (
       SELECT * FROM scans
