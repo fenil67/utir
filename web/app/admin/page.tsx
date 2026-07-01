@@ -91,9 +91,32 @@ function StatusDot({ ok }: { ok: boolean }) {
 // ── page ──────────────────────────────────────────────────────────────────────
 
 export default function AdminPage() {
-  const [authed,     setAuthed]     = useState(false);
-  const [pw,         setPw]         = useState("");
-  const [error,      setError]      = useState("");
+  const { user, isLoaded } = useUser();
+  const OWNER_ID = process.env.NEXT_PUBLIC_OWNER_CLERK_ID;
+  const ADMIN_KEY = process.env.NEXT_PUBLIC_ADMIN_KEY ?? "";
+
+  if (!isLoaded) return <div className="p-8 text-gray-500 text-sm">Loading…</div>;
+
+  if (!user) return (
+    <div style={{ minHeight: "60vh", display: "flex", alignItems: "center", justifyContent: "center" }}>
+      <p className="text-gray-400 text-sm">Please sign in to access this page.</p>
+    </div>
+  );
+
+  if (user.id !== OWNER_ID) return (
+    <div style={{ minHeight: "60vh", display: "flex", alignItems: "center", justifyContent: "center" }}>
+      <p className="text-gray-400 text-sm">Access denied.</p>
+    </div>
+  );
+
+  return <AdminDashboard adminKey={ADMIN_KEY} />;
+}
+
+// ── dashboard ─────────────────────────────────────────────────────────────────
+
+function AdminDashboard({ adminKey }: { adminKey: string }) {
+  const API_BASE  = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
+
   const [data,       setData]       = useState<DashboardData | null>(null);
   const [sevFilter,  setSevFilter]  = useState("");
   const [action,     setAction]     = useState<string | null>(null);
@@ -102,16 +125,10 @@ export default function AdminPage() {
 
   const EVENTS_PER_PAGE = 10;
 
-  const ADMIN_KEY    = process.env.NEXT_PUBLIC_ADMIN_KEY;
-  const API_BASE     = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
-  const OWNER_ID     = process.env.NEXT_PUBLIC_OWNER_CLERK_ID;
-  const { user }     = useUser();
 
   // CRITICAL: only fetch when authed === true
   useEffect(() => {
-    if (!authed) return;
-
-    const headers = { "X-Admin-Key": ADMIN_KEY || "" };
+    const headers = { "X-Admin-Key": adminKey };
     const eventsUrl = `${API_BASE}/api/admin/monitor/events${sevFilter ? `?severity=${sevFilter}` : ""}`;
 
     Promise.all([
@@ -129,54 +146,7 @@ export default function AdminPage() {
         searches:  searches?.data  ?? [],
       });
     });
-  }, [authed, sevFilter, tick, ADMIN_KEY, API_BASE]);
-
-  // ── password gate — renders when authed === false ─────────────────────────
-  if (!authed) {
-    return (
-      <div style={{ minHeight: "60vh", display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: "16px" }}>
-        <h1 className="text-2xl font-semibold text-white">Admin access</h1>
-        <input
-          type="password"
-          value={pw}
-          onChange={e => setPw(e.target.value)}
-          placeholder="Enter admin key"
-          onKeyDown={e => {
-            if (e.key === "Enter") {
-              if (pw === ADMIN_KEY) { setAuthed(true); setError(""); }
-              else setError("Wrong key");
-            }
-          }}
-          className="px-4 py-2 text-sm bg-white/[0.05] border border-white/15 rounded-lg text-white placeholder-gray-600 focus:outline-none focus:border-white/30 w-72"
-          autoFocus
-        />
-        {error && <p className="text-red-400 text-sm">{error}</p>}
-        <button
-          onClick={() => {
-            if (pw === ADMIN_KEY) { setAuthed(true); setError(""); }
-            else setError("Wrong key");
-          }}
-          className="px-6 py-2 text-sm font-semibold rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white transition-colors"
-        >
-          Enter
-        </button>
-      </div>
-    );
-  }
-
-  // ── loading state (authed but fetch not yet resolved) ─────────────────────
-  if (!data) {
-    return <div className="p-8 text-gray-500 text-sm">Loading…</div>;
-  }
-
-  // ── owner identity check ──────────────────────────────────────────────────
-  if (OWNER_ID && user?.id !== OWNER_ID) {
-    return (
-      <div style={{ minHeight: "60vh", display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: "12px" }}>
-        <p className="text-gray-400 text-sm">Access denied. This dashboard is restricted.</p>
-      </div>
-    );
-  }
+  }, [sevFilter, tick, adminKey, API_BASE]);
 
   // ── post actions ──────────────────────────────────────────────────────────
   async function runAction(label: string, path: string) {
@@ -184,7 +154,7 @@ export default function AdminPage() {
     try {
       await fetch(`${API_BASE}${path}`, {
         method:  "POST",
-        headers: { "X-Admin-Key": ADMIN_KEY || "" },
+        headers: { "X-Admin-Key": adminKey },
       });
       setTimeout(() => setAction(null), 3000);
     } catch {
@@ -195,7 +165,7 @@ export default function AdminPage() {
   async function acknowledge(eventId: string) {
     await fetch(`${API_BASE}/api/admin/monitor/events/${eventId}/acknowledge`, {
       method:  "POST",
-      headers: { "X-Admin-Key": ADMIN_KEY || "" },
+      headers: { "X-Admin-Key": adminKey },
     });
     setData(prev => prev && ({
       ...prev,
@@ -207,7 +177,8 @@ export default function AdminPage() {
     e => !e.acknowledged && ["critical", "high"].includes(e.severity)
   ).length;
 
-  // ── dashboard ─────────────────────────────────────────────────────────────
+
+
   return (
     <div className="max-w-6xl mx-auto px-6 py-10 space-y-10">
       <div className="flex items-center justify-between">
