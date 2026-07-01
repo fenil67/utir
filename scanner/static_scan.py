@@ -249,8 +249,8 @@ def calc_static_score(findings: list[dict]) -> int:
     if n == 0:
         return 30
     if n <= 2:
-        return 18
-    return 6
+        return 20
+    return 8
 
 
 def calc_deps_score(vuln_count: int) -> int:
@@ -360,8 +360,8 @@ def save_scan(conn, server_id: str, trust_score: int, auth_tier: str,
                 """
                 INSERT INTO scans
                   (server_id, trust_score, auth_tier, static_score, deps_score,
-                   behavior_score, maintenance_score, findings, raw_output)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                   maintenance_score, findings, raw_output)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
                 """,
                 (
                     server_id,
@@ -369,7 +369,6 @@ def save_scan(conn, server_id: str, trust_score: int, auth_tier: str,
                     auth_tier,
                     static_score,
                     deps_score,
-                    0,          # behavior_score — reserved for dynamic sandbox
                     maintenance_score,
                     psycopg2.extras.Json(sanitize_json(findings)),
                     psycopg2.extras.Json(sanitize_json(raw_output)),
