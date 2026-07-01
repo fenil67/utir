@@ -223,8 +223,6 @@ export default function ServerDetailTabs({ server, installSnippet }: Props) {
       {/* ── Tools ────────────────────────────────────────────────────────────── */}
       {tab === "tools" && (
         <div>
-          {console.log("server.tools:", server.tools)}
-          {console.log("tools length:", server.tools?.length)}
           {tools.length === 0 ? (
             <div className="rounded-xl bg-white/[0.03] border border-white/10 p-10 text-center">
               <p className="text-gray-400 mb-1">No tools detected.</p>
