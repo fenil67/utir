@@ -173,7 +173,7 @@ function AdminDashboard({ adminKey }: { adminKey: string }) {
     }));
   }
 
-  const flaggedServers = (data?.events ?? []).filter(
+  const flaggedServers = (data?.events?.data ?? []).filter(
     (e: MonitorEvent) => !e.acknowledged && ["critical", "high"].includes(e.severity)
   ).length;
 
