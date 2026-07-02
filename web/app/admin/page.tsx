@@ -3,8 +3,6 @@
 import { useState, useEffect } from "react";
 import { useUser } from "@clerk/nextjs";
 
-// ── types ─────────────────────────────────────────────────────────────────────
-
 interface PipelineRun {
   run_at:        string;
   step:          string;
@@ -66,8 +64,6 @@ interface DashboardData {
   searches:  SearchEntry[];
 }
 
-// ── small helpers ─────────────────────────────────────────────────────────────
-
 function SeverityBadge({ severity }: { severity: string }) {
   const colors: Record<string, string> = {
     critical: "bg-red-500/20 text-red-400 border border-red-500/30",
@@ -87,8 +83,6 @@ function StatusDot({ ok }: { ok: boolean }) {
     <span className={`inline-block w-2 h-2 rounded-full ${ok ? "bg-emerald-400" : "bg-red-400"}`} />
   );
 }
-
-// ── page ──────────────────────────────────────────────────────────────────────
 
 export default function AdminPage() {
   const { user, isLoaded } = useUser();
@@ -112,10 +106,8 @@ export default function AdminPage() {
   return <AdminDashboard adminKey={ADMIN_KEY} />;
 }
 
-// ── dashboard ─────────────────────────────────────────────────────────────────
-
 function AdminDashboard({ adminKey }: { adminKey: string }) {
-  const API_BASE  = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
+  const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
 
   const [data,       setData]       = useState<DashboardData | null>(null);
   const [sevFilter,  setSevFilter]  = useState("");
@@ -125,18 +117,16 @@ function AdminDashboard({ adminKey }: { adminKey: string }) {
 
   const EVENTS_PER_PAGE = 10;
 
-
-  // CRITICAL: only fetch when authed === true
   useEffect(() => {
     const headers = { "X-Admin-Key": adminKey };
     const eventsUrl = `${API_BASE}/api/admin/monitor/events${sevFilter ? `?severity=${sevFilter}` : ""}`;
 
     Promise.all([
-      fetch(eventsUrl,                                          { headers }).then(r => r.json()).catch(() => ({ data: [] })),
-      fetch(`${API_BASE}/api/admin/pipeline-runs`,             { headers }).then(r => r.json()).catch(() => ({ data: [] })),
+      fetch(eventsUrl,                                    { headers }).then(r => r.json()).catch(() => ({ data: [] })),
+      fetch(`${API_BASE}/api/admin/pipeline-runs`,        { headers }).then(r => r.json()).catch(() => ({ data: [] })),
       fetch(`${API_BASE}/api/stats`).then(r => r.json()).catch(() => null),
-      fetch(`${API_BASE}/api/admin/analytics/overview`,        { headers }).then(r => r.json()).catch(() => null),
-      fetch(`${API_BASE}/api/admin/analytics/searches`,        { headers }).then(r => r.json()).catch(() => null),
+      fetch(`${API_BASE}/api/admin/analytics/overview`,   { headers }).then(r => r.json()).catch(() => null),
+      fetch(`${API_BASE}/api/admin/analytics/searches`,   { headers }).then(r => r.json()).catch(() => null),
     ]).then(([events, runs, stats, analytics, searches]) => {
       setData({
         events:    events?.data    ?? [],
@@ -148,7 +138,6 @@ function AdminDashboard({ adminKey }: { adminKey: string }) {
     });
   }, [sevFilter, tick, adminKey, API_BASE]);
 
-  // ── post actions ──────────────────────────────────────────────────────────
   async function runAction(label: string, path: string) {
     setAction(label);
     try {
@@ -173,11 +162,11 @@ function AdminDashboard({ adminKey }: { adminKey: string }) {
     }));
   }
 
-  const flaggedServers = (data?.events?.data ?? []).filter(
+  const flaggedServers = (data?.events ?? []).filter(
     (e: MonitorEvent) => !e.acknowledged && ["critical", "high"].includes(e.severity)
   ).length;
 
-
+  if (!data) return <div className="p-8 text-gray-500 text-sm">Loading dashboard…</div>;
 
   return (
     <div className="max-w-6xl mx-auto px-6 py-10 space-y-10">
@@ -191,7 +180,6 @@ function AdminDashboard({ adminKey }: { adminKey: string }) {
         </button>
       </div>
 
-      {/* ── Stats ── */}
       {data.stats && (
         <section>
           <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">Ecosystem</h2>
@@ -213,7 +201,6 @@ function AdminDashboard({ adminKey }: { adminKey: string }) {
         </section>
       )}
 
-      {/* ── Quick actions ── */}
       <section>
         <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">Quick actions</h2>
         <div className="flex gap-3 flex-wrap">
@@ -234,7 +221,6 @@ function AdminDashboard({ adminKey }: { adminKey: string }) {
         <p className="text-xs text-gray-600 mt-2">Processes run in background — check logs for progress.</p>
       </section>
 
-      {/* ── Monitor events ── */}
       <section>
         <div className="flex items-center justify-between mb-3">
           <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Monitor events</h2>
@@ -252,8 +238,8 @@ function AdminDashboard({ adminKey }: { adminKey: string }) {
         </div>
 
         {(() => {
-          const totalEvents   = (data?.events ?? []).length;
-          const visibleEvents = (data?.events ?? []).slice(
+          const totalEvents   = (data.events ?? []).length;
+          const visibleEvents = (data.events ?? []).slice(
             eventsPage * EVENTS_PER_PAGE,
             (eventsPage + 1) * EVENTS_PER_PAGE,
           );
@@ -337,11 +323,10 @@ function AdminDashboard({ adminKey }: { adminKey: string }) {
         })()}
       </section>
 
-      {/* ── Pipeline runs ── */}
       <section>
         <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">Pipeline runs (last 10)</h2>
         <div className="rounded-xl border border-white/10 overflow-hidden">
-          {(data?.runs ?? []).length === 0 ? (
+          {(data.runs ?? []).length === 0 ? (
             <p className="text-xs text-gray-600 p-6 text-center">No pipeline runs recorded yet.</p>
           ) : (
             <table className="w-full text-xs">
@@ -353,7 +338,7 @@ function AdminDashboard({ adminKey }: { adminKey: string }) {
                 </tr>
               </thead>
               <tbody>
-                {(data?.runs ?? []).map((r, i) => (
+                {(data.runs ?? []).map((r, i) => (
                   <tr key={i} className="border-b border-white/[0.04] last:border-0">
                     <td className="px-4 py-3 text-gray-500 whitespace-nowrap">{new Date(r.run_at).toLocaleString()}</td>
                     <td className="px-4 py-3 text-gray-400 font-mono">{r.step}</td>
@@ -375,18 +360,17 @@ function AdminDashboard({ adminKey }: { adminKey: string }) {
         </div>
       </section>
 
-      {/* ── Site analytics ── */}
       {data.analytics && (
         <section>
           <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">Site analytics</h2>
 
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-4">
             {[
-              { label: "Views today",       value: data.analytics?.views_today    ?? "0" },
-              { label: "Views (7 days)",    value: data.analytics?.views_week     ?? "0" },
-              { label: "Searches today",    value: String(data.analytics?.searches_today ?? 0) },
-              { label: "Installs today",    value: data.analytics?.installs_today ?? "0" },
-              { label: "Installs (7 days)", value: data.analytics?.installs_week  ?? "0" },
+              { label: "Views today",       value: data.analytics.views_today    ?? "0" },
+              { label: "Views (7 days)",    value: data.analytics.views_week     ?? "0" },
+              { label: "Searches today",    value: String(data.analytics.searches_today ?? 0) },
+              { label: "Installs today",    value: data.analytics.installs_today ?? "0" },
+              { label: "Installs (7 days)", value: data.analytics.installs_week  ?? "0" },
             ].map(({ label, value }) => (
               <div key={label} className="rounded-xl bg-white/[0.03] border border-white/10 p-4">
                 <p className="text-xs text-gray-600 mb-1">{label}</p>
@@ -398,12 +382,12 @@ function AdminDashboard({ adminKey }: { adminKey: string }) {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
             <div className="rounded-xl border border-white/10 overflow-hidden">
               <p className="text-xs font-medium text-gray-500 px-4 py-2 border-b border-white/[0.06]">Top pages (7d)</p>
-              {(data.analytics?.top_pages?.length ?? 0) === 0 ? (
+              {(data.analytics.top_pages?.length ?? 0) === 0 ? (
                 <p className="text-xs text-gray-600 p-4 text-center">No data yet.</p>
               ) : (
                 <table className="w-full text-xs">
                   <tbody>
-                    {(data.analytics?.top_pages ?? []).map(row => (
+                    {(data.analytics.top_pages ?? []).map(row => (
                       <tr key={row.path} className="border-b border-white/[0.04] last:border-0">
                         <td className="px-4 py-2 text-gray-400 font-mono truncate max-w-xs">{row.path}</td>
                         <td className="px-4 py-2 text-gray-500 tabular-nums text-right">{row.count}</td>
@@ -416,12 +400,12 @@ function AdminDashboard({ adminKey }: { adminKey: string }) {
 
             <div className="rounded-xl border border-white/10 overflow-hidden">
               <p className="text-xs font-medium text-gray-500 px-4 py-2 border-b border-white/[0.06]">Top server pages (7d)</p>
-              {(data.analytics?.top_servers?.length ?? 0) === 0 ? (
+              {(data.analytics.top_servers?.length ?? 0) === 0 ? (
                 <p className="text-xs text-gray-600 p-4 text-center">No data yet.</p>
               ) : (
                 <table className="w-full text-xs">
                   <tbody>
-                    {(data.analytics?.top_servers ?? []).map(row => (
+                    {(data.analytics.top_servers ?? []).map(row => (
                       <tr key={row.github_url} className="border-b border-white/[0.04] last:border-0">
                         <td className="px-4 py-2">
                           <a href={row.github_url} target="_blank" rel="noopener noreferrer" className="text-emerald-400 hover:underline truncate block max-w-xs">
@@ -437,12 +421,12 @@ function AdminDashboard({ adminKey }: { adminKey: string }) {
             </div>
           </div>
 
-          {(data.analytics?.top_installed_servers?.length ?? 0) > 0 && (
+          {(data.analytics.top_installed_servers?.length ?? 0) > 0 && (
             <div className="rounded-xl border border-white/10 overflow-hidden mb-4">
               <p className="text-xs font-medium text-gray-500 px-4 py-2 border-b border-white/[0.06]">Top installed servers (7d)</p>
               <table className="w-full text-xs">
                 <tbody>
-                  {(data.analytics?.top_installed_servers ?? []).map(row => (
+                  {(data.analytics.top_installed_servers ?? []).map(row => (
                     <tr key={row.github_url} className="border-b border-white/[0.04] last:border-0">
                       <td className="px-4 py-2">
                         <a href={row.github_url} target="_blank" rel="noopener noreferrer" className="text-emerald-400 hover:underline truncate block max-w-xs">
@@ -457,12 +441,12 @@ function AdminDashboard({ adminKey }: { adminKey: string }) {
             </div>
           )}
 
-          {(data.analytics?.referrers?.length ?? 0) > 0 && (
+          {(data.analytics.referrers?.length ?? 0) > 0 && (
             <div className="rounded-xl border border-white/10 overflow-hidden mb-4">
               <p className="text-xs font-medium text-gray-500 px-4 py-2 border-b border-white/[0.06]">Top referrers (7d)</p>
               <table className="w-full text-xs">
                 <tbody>
-                  {(data.analytics?.referrers ?? []).map(row => (
+                  {(data.analytics.referrers ?? []).map(row => (
                     <tr key={row.referrer} className="border-b border-white/[0.04] last:border-0">
                       <td className="px-4 py-2 text-gray-400 truncate max-w-md font-mono">{row.referrer}</td>
                       <td className="px-4 py-2 text-gray-500 tabular-nums text-right">{row.count}</td>
@@ -473,7 +457,7 @@ function AdminDashboard({ adminKey }: { adminKey: string }) {
             </div>
           )}
 
-          {(data?.searches ?? []).length > 0 && (
+          {(data.searches ?? []).length > 0 && (
             <div className="rounded-xl border border-white/10 overflow-hidden">
               <p className="text-xs font-medium text-gray-500 px-4 py-2 border-b border-white/[0.06]">Recent searches</p>
               <table className="w-full text-xs">
@@ -485,7 +469,7 @@ function AdminDashboard({ adminKey }: { adminKey: string }) {
                   </tr>
                 </thead>
                 <tbody>
-                  {(data?.searches ?? []).slice(0, 20).map((s, i) => (
+                  {(data.searches ?? []).slice(0, 20).map((s, i) => (
                     <tr key={i} className="border-b border-white/[0.04] last:border-0">
                       <td className="px-4 py-2 text-gray-300">{s.query}</td>
                       <td className="px-4 py-2 text-gray-500 tabular-nums">{s.results ?? "—"}</td>
